@@ -307,6 +307,47 @@
     line-height: 1;
     text-align: center;
   }
+  .names-wrap { position: relative; }
+  .names-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 25;
+    min-width: 170px;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .names-menu[hidden] { display: none; }
+  .names-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .names-menu label:hover { background: var(--surface-2); }
+  .names-menu input { accent-color: var(--accent); width: 15px; height: 15px; }
+  .names-menu .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .names-menu .names-divider { border-top: 1px solid var(--line); margin: 4px 2px; }
+
+  .state-shape.drop-hover {
+    fill: var(--land-hover);
+    stroke: var(--accent);
+    stroke-width: 2.5;
+  }
+  .state-shape.placed.drop-hover { filter: brightness(1.15); stroke: var(--accent); stroke-width: 2.5; }
+  .callout-chip.drop-hover rect { stroke: var(--accent); stroke-width: 2.5; fill: var(--accent-soft); }
+  .callout-chip.revealed text { opacity: 1; }
 
   .state-shape {
     fill: var(--land);
@@ -339,7 +380,7 @@
     stroke-width: 2.5px;
     stroke-linejoin: round;
   }
-  .leader-line { stroke: var(--ink-soft); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .leader-line { stroke: var(--ink-soft); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
   .callout-chip rect {
     fill: var(--surface);
     stroke: var(--line);
@@ -708,6 +749,10 @@
   <div class="play-row">
     <div class="map-card">
       <div class="map-tools">
+        <div class="names-wrap">
+          <button id="namesBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">Names</button>
+          <div class="names-menu" id="namesMenu" hidden></div>
+        </div>
         <button id="zoomNE" aria-pressed="false">Zoom Northeast</button>
         <button id="zoomOut" class="zoom-btn" aria-label="Zoom out">&minus;</button>
         <button id="zoomIn" class="zoom-btn" aria-label="Zoom in">+</button>
@@ -885,7 +930,6 @@ const S = {
   timed: null,
   quizSet: 'unlocked',
   timedStyle: 'tap',
-  exploreLabels: false,
   neZoom: false
 };
 
@@ -930,7 +974,7 @@ function masteredCodes(subject) {
 /* ================= map construction ================= */
 
 const shapes = {}, chips = {}, labels = {}, bboxes = {};
-let gLabels;
+let gLabels, gNames;
 
 function buildMap() {
   map.innerHTML = '';
@@ -964,7 +1008,7 @@ function buildMap() {
     const bb = bboxes[code];
     const ax = bb.x + bb.width * (code === 'md' ? .62 : .78);
     const ay = bb.y + bb.height * (code === 'md' ? .35 : .5);
-    const cw = 96, ch = 21, cx = 866;
+    const cw = 96, ch = 24, cx = 915;
     const g = document.createElementNS(SVGNS, 'g');
     g.setAttribute('class', 'callout-chip');
     g.dataset.code = code;
@@ -983,10 +1027,12 @@ function buildMap() {
     g.appendChild(line); g.appendChild(rect); g.appendChild(t);
     gChips.appendChild(g);
     chips[code] = g;
-    chipY += ch + 7;
+    chipY += ch + 9;
   }
   map.appendChild(gChips);
 
+  gNames = document.createElementNS(SVGNS, 'g');
+  map.appendChild(gNames);
   gLabels = document.createElementNS(SVGNS, 'g');
   map.appendChild(gLabels);
 }
@@ -1047,7 +1093,7 @@ function flash(code, cls) {
 
 /* ================= viewBox / zoom ================= */
 
-const FULL_VB = [0, 0, 959, 593];
+const FULL_VB = [0, 0, 1018, 593];
 let vbAnim = null;
 function unionBBox(codes, pad, includeChips) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -1056,7 +1102,7 @@ function unionBBox(codes, pad, includeChips) {
     x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
     x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
   }
-  if (includeChips) x1 = Math.max(x1, 968);
+  if (includeChips) { x1 = Math.max(x1, 1015); y1 = Math.max(y1, 355); }
   return [x0 - pad, y0 - pad, (x1 - x0) + pad * 2, (y1 - y0) + pad * 2];
 }
 function setViewBox(vb, animate = true) {
@@ -1201,6 +1247,7 @@ function paintBase() {
     shapes[code].classList.add('hoverable');
     if (chips[code]) chips[code].classList.add('hoverable');
   }
+  renderNameLayer();
 }
 
 /* ================= trail strip ================= */
@@ -1308,10 +1355,12 @@ function handleDrop(tileCode, targetCode) {
     setFill(tileCode, hueOf(tileCode, S.subject));
     addLabel(tileCode);
     flash(tileCode, 'flash-good');
+    haptic(30);
     if (r.placed.size === r.tiles.length) finishRound();
     render();
   } else {
     r.mistakes++;
+    haptic([30, 50, 30]);
     r.missBy[tileCode] = (r.missBy[tileCode] || 0) + 1;
     flash(targetCode, 'flash-bad');
     const tileEl = document.querySelector(`.tile[data-code="${tileCode}"]`);
@@ -1344,6 +1393,7 @@ function finishRound() {
       }
       save();
       confettiBurst();
+      haptic([40, 60, 40, 60, 90]);
       const doneAll = S.subject === 'colonies' ? coloniesAllMastered() : statesAllMastered();
       if (doneAll) setMsg(S.subject === 'colonies' ? 'All 13 colonies, mastered ★' : 'Coast to coast. All 50 states mastered ★', 'good');
       else setMsg('Block mastered ★ The next one just unlocked.', 'good');
@@ -1384,10 +1434,12 @@ function quizTap(code) {
     setFill(code, hueOf(code, S.subject));
     addLabel(code);
     flash(code, 'flash-good');
+    haptic(25);
     if (q.tries === 0) q.right++;
     nextQuiz();
   } else {
     q.tries++;
+    haptic([30, 50, 30]);
     flash(code, 'flash-bad');
     if (q.tries >= 3) {
       q.revealed++;
@@ -1446,11 +1498,13 @@ function timedTap(code) {
   if (code === target) {
     setFill(code, hueOf(code, S.subject));
     flash(code, 'flash-good');
+    haptic(20);
     t.i++;
     if (t.i >= t.seq.length) endTimed();
     renderCtx();
   } else {
     t.penalty += 2000;
+    haptic([30, 50, 30]);
     flash(code, 'flash-bad');
     setMsg('+2s. That was ' + NAMES[code] + '.', 'bad');
   }
@@ -1462,10 +1516,12 @@ function timedDrop(tileCode, targetCode) {
     t.placed.add(tileCode);
     setFill(tileCode, hueOf(tileCode, S.subject));
     flash(tileCode, 'flash-good');
+    haptic(20);
     if (t.placed.size === t.tiles.length) endTimed();
     render();
   } else {
     t.penalty += 2000;
+    haptic([30, 50, 30]);
     flash(targetCode, 'flash-bad');
     setMsg('+2s penalty.', 'bad');
   }
@@ -1490,14 +1546,91 @@ function exploreTap(code) {
   setFill(code, hueOf(code, S.subject));
   addLabel(code);
   flash(code, 'flash-good');
-  if (!S.exploreLabels) setTimeout(() => {
-    if (S.mode === 'explore' && !S.exploreLabels && !masteredCodes(S.subject).includes(code)) { clearFill(code); removeLabel(code); }
+  const stays = namedCodes().includes(code) || masteredCodes(S.subject).includes(code);
+  if (!stays) setTimeout(() => {
+    if (S.mode === 'explore' && !namedCodes().includes(code) && !masteredCodes(S.subject).includes(code)) {
+      clearFill(code); removeLabel(code); renderNameLayer();
+    }
   }, 1900);
 }
-function applyExploreLabels() {
-  paintBase();
-  if (S.exploreLabels) for (const code of subjectCodes(S.subject)) { setFill(code, hueOf(code, S.subject)); addLabel(code); }
+
+/* ================= name labels layer ================= */
+
+const VIEWKEY = 'state-scout-view-v1';
+function loadNameSel() {
+  try {
+    const p = JSON.parse(localStorage.getItem(VIEWKEY) || '{}');
+    return { states: new Set(p.states || []), colonies: new Set(p.colonies || []) };
+  } catch { return { states: new Set(), colonies: new Set() }; }
 }
+const nameSel = loadNameSel();
+function saveNameSel() {
+  try { localStorage.setItem(VIEWKEY, JSON.stringify({ states: [...nameSel.states], colonies: [...nameSel.colonies] })); } catch {}
+}
+function namedCodes() {
+  if (S.subject === 'colonies') {
+    const sel = nameSel.colonies;
+    if (sel.has('all')) return COLONIES.slice();
+    const out = [];
+    sel.forEach(i => { const g = COLONY_GROUPS[i]; if (g) for (let k = g.from; k <= g.to; k++) out.push(COLONIES[k]); });
+    return out;
+  }
+  const sel = nameSel.states;
+  if (sel.has('all')) return Object.keys(NAMES);
+  return [...sel].flatMap(i => (BLOCKS[i] ? BLOCKS[i].codes : []));
+}
+function renderNameLayer() {
+  if (!gNames) return;
+  gNames.innerHTML = '';
+  for (const c of Object.keys(chips)) if (!chips[c].classList.contains('placed')) chips[c].classList.remove('revealed');
+  for (const code of namedCodes()) {
+    if (labels[code]) continue;
+    if (chips[code]) {
+      if (!chips[code].classList.contains('muted')) chips[code].classList.add('revealed');
+      continue;
+    }
+    const [x, y] = labelPoint(code);
+    const t = document.createElementNS(SVGNS, 'text');
+    t.setAttribute('x', x); t.setAttribute('y', y);
+    t.setAttribute('class', 'map-label');
+    t.textContent = bboxes[code].width < 46 ? code.toUpperCase() : NAMES[code];
+    gNames.appendChild(t);
+  }
+  const btn = $('#namesBtn');
+  if (btn) btn.setAttribute('aria-pressed', String(namedCodes().length > 0));
+}
+function nameRow(key, label, hue, on) {
+  return `<label>${hue ? `<span class="swatch" style="background:${hue}"></span>` : ''}<input type="checkbox" data-key="${key}" ${on ? 'checked' : ''}> ${label}</label>`;
+}
+function buildNamesMenu() {
+  const menu = $('#namesMenu');
+  let h = '';
+  if (S.subject === 'colonies') {
+    h += nameRow('all', 'All 13 colonies', null, nameSel.colonies.has('all'));
+    h += '<div class="names-divider"></div>';
+    COLONY_GROUPS.forEach((g, i) => { h += nameRow(i, g.name, g.hue, nameSel.colonies.has(i)); });
+  } else {
+    h += nameRow('all', 'All 50 states', null, nameSel.states.has('all'));
+    h += '<div class="names-divider"></div>';
+    BLOCKS.forEach((b, i) => { h += nameRow(i, b.name, b.hue, nameSel.states.has(i)); });
+  }
+  menu.innerHTML = h;
+}
+$('#namesBtn').addEventListener('click', () => {
+  const menu = $('#namesMenu');
+  if (menu.hidden) buildNamesMenu();
+  menu.hidden = !menu.hidden;
+  $('#namesBtn').setAttribute('aria-expanded', String(!menu.hidden));
+});
+$('#namesMenu').addEventListener('change', e => {
+  const cb = e.target.closest('input[data-key]');
+  if (!cb) return;
+  const key = cb.dataset.key === 'all' ? 'all' : Number(cb.dataset.key);
+  const sel = S.subject === 'colonies' ? nameSel.colonies : nameSel.states;
+  if (cb.checked) sel.add(key); else sel.delete(key);
+  saveNameSel();
+  renderNameLayer();
+});
 
 /* ================= context panel rendering ================= */
 
@@ -1559,8 +1692,7 @@ function renderCtx() {
     if (!t || !t.running) h += `<button class="btn" id="timedBtn">${t ? 'Go again' : 'Start'}</button>`;
   } else {
     h += `<div class="ctx-title">Explore the map</div>`;
-    h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. No score, no clock.</div>`;
-    h += `<label class="switch-row"><input type="checkbox" id="allLabels" ${S.exploreLabels ? 'checked' : ''}> Show every name</label>`;
+    h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. The Names button on the map can show whole regions. No score, no clock.</div>`;
   }
   body.innerHTML = h;
 
@@ -1575,7 +1707,6 @@ function renderCtx() {
     const b = e.target.closest('button'); if (!b) return;
     S.timedStyle = b.dataset.style; S.timed = null; clearInterval(timerInt); setMsg('', ''); paintBase(); renderCtx(); renderTray();
   });
-  const al = $('#allLabels'); if (al) al.addEventListener('change', e => { S.exploreLabels = e.target.checked; applyExploreLabels(); });
 }
 
 /* ================= tray ================= */
@@ -1614,10 +1745,22 @@ function renderTray() {
 /* ================= drag & drop (pointer events) ================= */
 
 let drag = null;
+function setDropHover(code, on) {
+  if (!code) return;
+  if (shapes[code]) shapes[code].classList.toggle('drop-hover', on);
+  if (chips[code]) chips[code].classList.toggle('drop-hover', on);
+}
+function haptic(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch {} }
+/* The drop point is the GHOST's visual center, not the finger/cursor —
+   what lights up is exactly what the drop will hit. */
+function ghostAnchor(d, cx, cy) {
+  const gh = d.ghost ? (d.ghost.offsetHeight || 36) : 0;
+  return [cx, cy - gh * 0.7];
+}
 document.addEventListener('pointerdown', e => {
   const tile = e.target.closest('.tile');
   if (!tile) return;
-  drag = { code: tile.dataset.code, x0: e.clientX, y0: e.clientY, moved: false, ghost: null, tile };
+  drag = { code: tile.dataset.code, x0: e.clientX, y0: e.clientY, moved: false, ghost: null, tile, hover: null };
   try { tile.setPointerCapture(e.pointerId); } catch {}
 });
 document.addEventListener('pointermove', e => {
@@ -1634,6 +1777,14 @@ document.addEventListener('pointermove', e => {
   if (drag.ghost) {
     drag.ghost.style.left = e.clientX + 'px';
     drag.ghost.style.top = e.clientY + 'px';
+    const [ax, ay] = ghostAnchor(drag, e.clientX, e.clientY);
+    const target = dropTargetAt(ax, ay);
+    if (target !== drag.hover) {
+      setDropHover(drag.hover, false);
+      drag.hover = target;
+      setDropHover(target, true);
+      if (target) haptic(8);
+    }
   }
 });
 document.addEventListener('pointerup', e => {
@@ -1641,6 +1792,7 @@ document.addEventListener('pointerup', e => {
   const d = drag; drag = null;
   if (d.ghost) d.ghost.remove();
   d.tile.style.opacity = '';
+  setDropHover(d.hover, false);
   if (!d.moved) { // simple tap: arm / disarm the tile
     if (S.mode === 'journey' && S.round && !S.round.done) {
       S.round.armed = S.round.armed === d.code ? null : d.code;
@@ -1648,13 +1800,18 @@ document.addEventListener('pointerup', e => {
     }
     return;
   }
-  const target = dropTargetAt(e.clientX, e.clientY);
+  const target = d.hover; // always the element that was lit
   if (target === null) return; // dropped on water / off-map: no penalty
   if (S.mode === 'journey') handleDrop(d.code, target);
   else if (S.mode === 'timed') timedDrop(d.code, target);
 });
 document.addEventListener('pointercancel', () => {
-  if (drag) { if (drag.ghost) drag.ghost.remove(); drag.tile.style.opacity = ''; drag = null; }
+  if (drag) {
+    if (drag.ghost) drag.ghost.remove();
+    drag.tile.style.opacity = '';
+    setDropHover(drag.hover, false);
+    drag = null;
+  }
 });
 function dropTargetAt(x, y) {
   for (const el of document.elementsFromPoint(x, y)) {
@@ -1758,7 +1915,6 @@ function setMode(mode) {
   $('#modeBtn').setAttribute('aria-expanded', 'false');
   if (mode === 'journey') startRound();
   else S.round = null;
-  if (mode === 'explore') S.exploreLabels = false;
   paintBase();
   if (S.mode === 'journey') reLabelPlaced();
   render();
@@ -1789,6 +1945,10 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.mode-row')) {
     $('#modeMenu').hidden = true;
     $('#modeBtn').setAttribute('aria-expanded', 'false');
+  }
+  if (!e.target.closest('.names-wrap')) {
+    $('#namesMenu').hidden = true;
+    $('#namesBtn').setAttribute('aria-expanded', 'false');
   }
 });
 $('#zoomNE').addEventListener('click', () => { S.neZoom = !S.neZoom; applyView(); });
