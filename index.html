@@ -1672,7 +1672,7 @@ $('#resetBtn').addEventListener('click', e => {
 
 /* ================= sync (Google sign-in + Firestore) ================= */
 
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {"apiKey": "AIzaSyAgUjVuJTTVzphu92rvR_rA64BXmBag0dw", "authDomain": "state-scout.firebaseapp.com", "projectId": "state-scout", "storageBucket": "state-scout.firebasestorage.app", "messagingSenderId": "1083004294593", "appId": "1:1083004294593:web:764b1aa9ab252196848b40"};
 const syncOn = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
 let fb = null, fbUser = null, unsubDoc = null;
 let pushTimer = 0, pushPending = false, syncState = 'idle'; // idle | ok | offline | error
