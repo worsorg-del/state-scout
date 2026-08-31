@@ -104,13 +104,13 @@
   }
 
   .app {
-    max-width: 1180px;
+    max-width: 1320px;
     margin: 0 auto;
-    padding: 12px 16px 28px;
+    padding: 12px 16px 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    min-height: 100dvh;
+    height: 100dvh;
   }
 
   /* ---------- header ---------- */
@@ -265,7 +265,13 @@
   .colony-legend b { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
   .colony-count { margin-left: auto; font-size: 12.5px; color: var(--ink-soft); font-weight: 600; }
 
-  /* ---------- map ---------- */
+  /* ---------- map + sidebar row ---------- */
+  .play-row {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    gap: 12px;
+  }
   .map-card {
     position: relative;
     background: var(--surface);
@@ -274,7 +280,8 @@
     box-shadow: var(--shadow);
     padding: 8px;
     flex: 1 1 0;
-    min-height: 330px;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     overflow: hidden;
   }
@@ -293,6 +300,13 @@
     box-shadow: var(--shadow-sm);
   }
   .map-tools button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .map-tools button.zoom-btn {
+    width: 32px;
+    padding: 6px 0;
+    font-size: 15px;
+    line-height: 1;
+    text-align: center;
+  }
 
   .state-shape {
     fill: var(--land);
@@ -353,49 +367,76 @@
   @keyframes chipBad { 0%, 60% { fill: var(--bad); } }
   .inset-line { stroke: var(--line); stroke-width: 1.5; fill: none; vector-effect: non-scaling-stroke; }
 
-  /* ---------- dock ---------- */
-  .dock {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 12px;
-    align-items: stretch;
-  }
+  /* ---------- sidebar ---------- */
   .panel {
     background: var(--surface);
     border: 1.5px solid var(--line);
     border-radius: 18px;
-    padding: 14px 16px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  .modes {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+  .side-panel {
+    width: 264px;
+    flex: none;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .mode-row { position: relative; }
+  #modeBtn {
+    width: 100%;
+    border: 1.5px solid var(--line);
     background: var(--surface-2);
+    border-radius: 10px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #modeBtn svg { color: var(--ink-soft); transition: transform .15s; }
+  #modeBtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .modes {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
     border-radius: 12px;
-    padding: 3px;
+    box-shadow: var(--shadow);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
     gap: 2px;
   }
+  .modes[hidden] { display: none; }
   .modes button {
     border: 0;
     background: transparent;
-    border-radius: 10px;
-    padding: 7px 2px;
-    font-size: 12.5px;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--ink-soft);
     cursor: pointer;
+    text-align: left;
   }
+  .modes button:hover { background: var(--surface-2); }
   .modes button[aria-selected="true"] {
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-sm);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .ctx-title {
     font-family: "Bricolage Grotesque", sans-serif;
     font-weight: 800;
-    font-size: 19px;
+    font-size: 17px;
     letter-spacing: -.01em;
     line-height: 1.2;
     text-wrap: balance;
@@ -417,7 +458,7 @@
   .prompt-name {
     font-family: "Bricolage Grotesque", sans-serif;
     font-weight: 800;
-    font-size: 27px;
+    font-size: 23px;
     letter-spacing: -.015em;
     line-height: 1.1;
     color: var(--accent);
@@ -425,7 +466,7 @@
   .timer-read {
     font-family: "Bricolage Grotesque", sans-serif;
     font-weight: 800;
-    font-size: 34px;
+    font-size: 28px;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
   }
@@ -475,7 +516,15 @@
   .switch-row input { accent-color: var(--accent); width: 17px; height: 17px; }
 
   /* ---------- tray ---------- */
-  .tray-panel { min-height: 148px; }
+  .tray-panel-side {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
   .tray-head { display: flex; align-items: baseline; gap: 8px; }
   .tray-head h2 {
     margin: 0;
@@ -491,9 +540,9 @@
     border: 1.5px solid var(--line);
     background: var(--surface);
     border-radius: 12px;
-    padding: 9px 14px;
+    padding: 8px 11px;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 13px;
     cursor: grab;
     box-shadow: var(--shadow-sm);
     touch-action: none;
@@ -603,10 +652,11 @@
 
   /* ---------- responsive ---------- */
   @media (max-width: 860px) {
-    .dock { grid-template-columns: 1fr; }
+    .app { height: auto; min-height: 100dvh; }
+    .play-row { flex-direction: column; }
+    .side-panel { width: auto; overflow-y: visible; }
     .map-card { min-height: 0; flex: none; }
     .map-card svg { height: auto; aspect-ratio: var(--vb-ar, 1.617); }
-    .app { min-height: 0; }
   }
   @media (max-width: 520px) {
     .app { padding: 10px 10px 24px; }
@@ -655,31 +705,39 @@
   <div id="trailStates" class="trail" aria-label="Journey blocks"></div>
   <div id="trailColonies" class="colony-strip" hidden></div>
 
-  <div class="map-card">
-    <div class="map-tools">
-      <button id="zoomNE" aria-pressed="false">Zoom Northeast</button>
+  <div class="play-row">
+    <div class="map-card">
+      <div class="map-tools">
+        <button id="zoomNE" aria-pressed="false">Zoom Northeast</button>
+        <button id="zoomOut" class="zoom-btn" aria-label="Zoom out">&minus;</button>
+        <button id="zoomIn" class="zoom-btn" aria-label="Zoom in">+</button>
+      </div>
+      <svg id="map" viewBox="0 0 959 593" role="img" aria-label="Map of the United States"></svg>
+      <canvas id="confetti"></canvas>
     </div>
-    <svg id="map" viewBox="0 0 959 593" role="img" aria-label="Map of the United States"></svg>
-    <canvas id="confetti"></canvas>
-  </div>
 
-  <div class="dock">
-    <div class="panel" id="ctxPanel">
-      <div class="modes" role="tablist" aria-label="Mode">
-        <button role="tab" data-mode="journey" aria-selected="true">Journey</button>
-        <button role="tab" data-mode="quiz" aria-selected="false">Quiz</button>
-        <button role="tab" data-mode="timed" aria-selected="false">Timed</button>
-        <button role="tab" data-mode="explore" aria-selected="false">Explore</button>
+    <aside class="side-panel panel">
+      <div class="mode-row">
+        <button id="modeBtn" aria-haspopup="menu" aria-expanded="false">
+          <span id="modeBtnLabel">Journey</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="modes" id="modeMenu" role="menu" hidden>
+          <button role="menuitem" data-mode="journey" aria-selected="true">Journey</button>
+          <button role="menuitem" data-mode="quiz" aria-selected="false">Quiz</button>
+          <button role="menuitem" data-mode="timed" aria-selected="false">Timed</button>
+          <button role="menuitem" data-mode="explore" aria-selected="false">Explore</button>
+        </div>
       </div>
       <div id="ctxBody" style="display:flex;flex-direction:column;gap:10px;"></div>
-    </div>
-    <div class="panel tray-panel">
-      <div class="tray-head">
-        <h2 id="trayTitle">Name tray</h2>
-        <span id="trayCount"></span>
+      <div class="tray-panel-side">
+        <div class="tray-head">
+          <h2 id="trayTitle">Name tray</h2>
+          <span id="trayCount"></span>
+        </div>
+        <div class="tray" id="tray"></div>
       </div>
-      <div class="tray" id="tray"></div>
-    </div>
+    </aside>
   </div>
 </div>
 
@@ -1018,13 +1076,99 @@ function applyView() {
   const zoomBtn = $('#zoomNE');
   if (S.subject === 'colonies') {
     zoomBtn.hidden = true;
-    setViewBox(unionBBox([...COLONIES, 'me'], 18, true));
+    const vb = unionBBox([...COLONIES, 'me'], 18, true);
+    clampVB = vb.slice();
+    setViewBox(vb);
   } else {
     zoomBtn.hidden = false;
     zoomBtn.setAttribute('aria-pressed', String(S.neZoom));
+    clampVB = FULL_VB.slice();
     setViewBox(S.neZoom ? unionBBox(BLOCKS[0].codes, 20, true) : FULL_VB);
   }
 }
+
+/* ---------- map zoom & pan (wheel, buttons, pinch, drag) ---------- */
+let clampVB = FULL_VB.slice();
+let suppressMapClick = false;
+function getVB() { const v = map.getAttribute('viewBox').split(' ').map(Number); return { x: v[0], y: v[1], w: v[2], h: v[3] }; }
+function putVB(v) { map.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`); }
+function clampCam(v) {
+  const [bx, by, bw, bh] = clampVB;
+  v.w = Math.min(bw, Math.max(bw / 8, v.w));
+  v.h = v.w * bh / bw;
+  v.x = Math.min(bx + bw - v.w, Math.max(bx, v.x));
+  v.y = Math.min(by + bh - v.h, Math.max(by, v.y));
+  return v;
+}
+function mapScale(v) {
+  const r = map.getBoundingClientRect();
+  return Math.min(r.width / v.w, r.height / v.h);
+}
+function clientToMapPt(cx, cy) {
+  const r = map.getBoundingClientRect();
+  const v = getVB();
+  const s = mapScale(v);
+  const ox = (r.width - v.w * s) / 2, oy = (r.height - v.h * s) / 2;
+  return [v.x + (cx - r.left - ox) / s, v.y + (cy - r.top - oy) / s];
+}
+function zoomAt(cx, cy, factor) {
+  if (vbAnim) cancelAnimationFrame(vbAnim);
+  const v = getVB();
+  const [, , bw, bh] = clampVB;
+  const newW = Math.min(bw, Math.max(bw / 8, v.w / factor));
+  const f = v.w / newW;
+  const [ax, ay] = clientToMapPt(cx, cy);
+  putVB(clampCam({ x: ax - (ax - v.x) / f, y: ay - (ay - v.y) / f, w: newW, h: newW * bh / bw }));
+}
+map.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
+}, { passive: false });
+$('#zoomIn').addEventListener('click', () => { const r = map.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.5); });
+$('#zoomOut').addEventListener('click', () => { const r = map.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.5); });
+
+const mapPtrs = new Map();
+let pinchBase = null;
+map.addEventListener('pointerdown', e => {
+  if (drag) return;
+  mapPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+  if (mapPtrs.size === 2) pinchBase = null;
+});
+map.addEventListener('pointermove', e => {
+  const p = mapPtrs.get(e.pointerId);
+  if (!p || drag) return;
+  const prevX = p.x, prevY = p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (mapPtrs.size === 1) {
+    const v = getVB();
+    if (v.w >= clampVB[2] - 0.5) return; // not zoomed in: nothing to pan
+    if (Math.hypot(p.x - p.sx, p.y - p.sy) < 6 && !suppressMapClick) return;
+    suppressMapClick = true;
+    if (vbAnim) cancelAnimationFrame(vbAnim);
+    const s = mapScale(v);
+    putVB(clampCam({ x: v.x - (p.x - prevX) / s, y: v.y - (p.y - prevY) / s, w: v.w, h: v.h }));
+  } else if (mapPtrs.size === 2) {
+    const pts = [...mapPtrs.values()];
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    const midX = (pts[0].x + pts[1].x) / 2, midY = (pts[0].y + pts[1].y) / 2;
+    if (pinchBase && pinchBase.dist > 0) {
+      suppressMapClick = true;
+      zoomAt(midX, midY, dist / pinchBase.dist);
+      const v = getVB();
+      const s = mapScale(v);
+      putVB(clampCam({ x: v.x - (midX - pinchBase.midX) / s, y: v.y - (midY - pinchBase.midY) / s, w: v.w, h: v.h }));
+    }
+    pinchBase = { dist, midX, midY };
+  }
+});
+const endMapPtr = e => {
+  if (mapPtrs.delete(e.pointerId)) {
+    if (mapPtrs.size < 2) pinchBase = null;
+    if (mapPtrs.size === 0 && suppressMapClick) setTimeout(() => { suppressMapClick = false; }, 120);
+  }
+};
+map.addEventListener('pointerup', endMapPtr);
+map.addEventListener('pointercancel', endMapPtr);
 
 /* ================= base map painting per subject/mode ================= */
 
@@ -1527,6 +1671,7 @@ function dropTargetAt(x, y) {
 /* ================= map tap & tooltip ================= */
 
 map.addEventListener('click', e => {
+  if (suppressMapClick) return;
   const host = e.target.closest('[data-code]');
   if (!host || host.classList.contains('muted')) return;
   const code = host.dataset.code;
@@ -1608,6 +1753,9 @@ function setMode(mode) {
   S.quiz = null; S.timed = null; clearInterval(timerInt);
   setMsg('', '');
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
+  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', explore: 'Explore' }[mode] || mode;
+  $('#modeMenu').hidden = true;
+  $('#modeBtn').setAttribute('aria-expanded', 'false');
   if (mode === 'journey') startRound();
   else S.round = null;
   if (mode === 'explore') S.exploreLabels = false;
@@ -1631,6 +1779,17 @@ $('#tab-states').addEventListener('click', () => setSubject('states'));
 $('#tab-colonies').addEventListener('click', () => setSubject('colonies'));
 document.querySelector('.modes').addEventListener('click', e => {
   const b = e.target.closest('button'); if (b) setMode(b.dataset.mode);
+});
+$('#modeBtn').addEventListener('click', () => {
+  const menu = $('#modeMenu');
+  menu.hidden = !menu.hidden;
+  $('#modeBtn').setAttribute('aria-expanded', String(!menu.hidden));
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.mode-row')) {
+    $('#modeMenu').hidden = true;
+    $('#modeBtn').setAttribute('aria-expanded', 'false');
+  }
 });
 $('#zoomNE').addEventListener('click', () => { S.neZoom = !S.neZoom; applyView(); });
 
