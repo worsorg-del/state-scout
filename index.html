@@ -1067,7 +1067,7 @@ const CALLOUTS = ['nh', 'ma', 'ri', 'ct', 'nj', 'de', 'md', 'dc'];
 const KEY = 'state-scout-v1';
 function loadStore() {
   const base = {
-    states:   { mastered:0, streak:0, target:3, active:0 },
+    states:   { mastered:0, masteredBlocks:[], streak:0, target:3, active:0 },
     colonies: { frontier:0, streak:0, blockSize:3 },
     best: {},
     updatedAt: 0
@@ -1076,16 +1076,26 @@ function loadStore() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return base;
     const p = JSON.parse(raw);
-    return {
+    const out = {
       states:   { ...base.states,   ...(p.states   || {}) },
       colonies: { ...base.colonies, ...(p.colonies || {}) },
       best: p.best || {},
       updatedAt: p.updatedAt || 0
     };
+    normalizeStates(out.states);
+    return out;
   } catch { return base; }
+}
+function normalizeStates(st) {
+  let mb = Array.isArray(st.masteredBlocks) ? st.masteredBlocks.filter(i => Number.isInteger(i) && i >= 0 && i <= 4) : null;
+  if (!mb || (!mb.length && (st.mastered || 0) > 0)) { mb = []; for (let i = 0; i < Math.min(st.mastered || 0, 5); i++) mb.push(i); }
+  st.masteredBlocks = [...new Set(mb)];
+  st.mastered = st.masteredBlocks.length;
+  st.active = Math.min(Math.max(st.active || 0, 0), 4);
 }
 let adopting = false;
 function save() {
+  normalizeStates(store.states);
   if (!adopting) store.updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(store)); } catch {}
   if (!adopting) schedulePush();
@@ -1100,7 +1110,7 @@ const S = {
   round: null,            // journey round
   quiz: null,
   timed: null,
-  quizSet: 'unlocked',
+  quizSet: 'all',
   timedStyle: 'tap',
   spell: { target: null, round: null, done: null, endless: false, lastEndless: null },
   abbr: { style: 'find', round: null, done: null },
@@ -1120,9 +1130,9 @@ const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { c
 function stateProg()  { return store.states; }
 function colonyProg() { return store.colonies; }
 
-function currentBlockIdx() { return Math.min(stateProg().mastered, 4); }
-function activeBlockIdx()  { return Math.min(stateProg().active ?? currentBlockIdx(), currentBlockIdx()); }
-function statesAllMastered() { return stateProg().mastered >= 5; }
+function activeBlockIdx()  { return Math.min(Math.max(stateProg().active || 0, 0), 4); }
+function blockMastered(i)  { return stateProg().masteredBlocks.includes(i); }
+function statesAllMastered() { return stateProg().masteredBlocks.length >= 5; }
 function coloniesAllMastered() { return colonyProg().frontier >= 13; }
 
 function colonyBlockCodes() {
@@ -1130,12 +1140,8 @@ function colonyBlockCodes() {
   return COLONIES.slice(p.frontier, Math.min(p.frontier + p.blockSize, 13));
 }
 function unlockedCodes(subject) {
-  if (subject === 'colonies') {
-    const p = colonyProg();
-    return COLONIES.slice(0, Math.min(p.frontier + p.blockSize, 13));
-  }
-  const upTo = Math.min(stateProg().mastered + 1, 5);
-  return BLOCKS.slice(0, upTo).flatMap(b => b.codes);
+  if (subject === 'colonies') return COLONIES.slice();
+  return BLOCKS.flatMap(b => b.codes);
 }
 function subjectCodes(subject) { return subject === 'colonies' ? COLONIES : Object.keys(NAMES); }
 function hueOf(code, subject) {
@@ -1145,7 +1151,7 @@ function hueOf(code, subject) {
 }
 function masteredCodes(subject) {
   if (subject === 'colonies') return COLONIES.slice(0, colonyProg().frontier);
-  return BLOCKS.slice(0, stateProg().mastered).flatMap(b => b.codes);
+  return stateProg().masteredBlocks.flatMap(i => BLOCKS[i].codes);
 }
 
 /* ================= map construction ================= */
@@ -1445,22 +1451,20 @@ function renderTrail() {
       const btn = document.createElement('button');
       btn.className = 'trail-chip';
       btn.style.setProperty('--chip-hue', b.hue);
-      const mastered = i < p.mastered;
-      const current = i === p.mastered && !statesAllMastered();
-      const locked = i > p.mastered;
+      const mastered = blockMastered(i);
+      const active = i === activeBlockIdx();
       if (mastered) btn.classList.add('mastered');
-      if (current) btn.classList.add('current');
-      if (locked) { btn.classList.add('locked'); btn.disabled = true; }
-      if (S.mode === 'journey' && i === activeBlockIdx() && !statesAllMastered() || (statesAllMastered() && S.mode === 'journey' && i === activeBlockIdx())) btn.classList.add('active-block');
+      if (active) btn.classList.add('current');
+      if (S.mode === 'journey' && active) btn.classList.add('active-block');
       let sub;
       if (mastered) sub = '<span>Mastered 🏆</span>';
-      else if (current) sub = `<span class="streak-dots">${dotHtml(p.streak, p.target)}</span><span>${p.streak} of ${p.target}</span>`;
-      else sub = '<span>Locked</span>';
+      else if (active) sub = `<span class="streak-dots">${dotHtml(p.streak, p.target)}</span><span>${p.streak} of ${p.target}</span>`;
+      else sub = '<span>Tap to practice</span>';
       btn.innerHTML = `<span class="num">${b.numeral}</span><span><span class="t-name">${b.name}</span><span class="t-sub">${sub}</span></span>`;
       btn.addEventListener('click', () => {
-        if (locked) return;
-        store.states.active = i; save();
-        if (S.mode !== 'journey') setMode('journey'); else { startRound(); render(); }
+        if (store.states.active !== i) { store.states.active = i; store.states.streak = 0; }
+        save();
+        if (S.mode !== 'journey') setMode('journey'); else { setMsg('', ''); startRound(); paintBase(); reLabelPlaced(); render(); }
       });
       tS.appendChild(btn);
     });
@@ -1493,7 +1497,7 @@ function journeyBlockCodes() {
 }
 function journeyIsFrontier() {
   if (S.subject === 'colonies') return !coloniesAllMastered();
-  return !statesAllMastered() && activeBlockIdx() === stateProg().mastered;
+  return !blockMastered(activeBlockIdx());
 }
 function journeyBlockLabel() {
   if (S.subject === 'colonies') {
@@ -1520,12 +1524,12 @@ function startRound() {
 function journeyMessage() {
   const p = S.subject === 'colonies' ? colonyProg() : stateProg();
   const target = stateProg().target;
-  if (S.subject === 'states' && statesAllMastered()) return { text: 'All 50 mastered. Replay any block from the trail above, or hit Timed for the Full 50.', cls: 'good' };
-  if (S.subject === 'colonies' && coloniesAllMastered()) return { text: 'All 13 colonies mastered. Try a Timed run.', cls: 'good' };
-  if (!journeyIsFrontier()) return { text: 'Review round. This block is already mastered, so the streak isn’t at stake.', cls: '' };
-  const brandNew = S.subject === 'colonies' ? colonyProg().frontier === 0 : stateProg().mastered === 0;
-  if (p.streak === 0 && brandNew) return { text: `Drag each name onto its state, or tap a name and then its state. Zero misses, ${target}&times; in a row, unlocks the next block.`, cls: '' };
-  if (p.streak === 0) return { text: `Place every name with zero misses, ${target}&times; in a row, to unlock the next block.`, cls: '' };
+  if (S.subject === 'states' && statesAllMastered()) return { text: 'All 50 mastered 🏆 Replay any region above, or hit Timed for the Full 50.', cls: 'good' };
+  if (S.subject === 'colonies' && coloniesAllMastered()) return { text: 'All 13 colonies mastered 🏆 Try a Timed run.', cls: 'good' };
+  if (!journeyIsFrontier()) return { text: 'Mastered 🏆 Pure practice round. Pick any region above, anytime.', cls: '' };
+  const brandNew = S.subject === 'colonies' ? colonyProg().frontier === 0 : stateProg().masteredBlocks.length === 0;
+  if (p.streak === 0 && brandNew) return { text: `Drag each name onto its state, or tap a name and then its state. Zero misses, ${target}&times; in a row, earns this region’s 🏆. Any region, any order.`, cls: '' };
+  if (p.streak === 0) return { text: `Place every name with zero misses, ${target}&times; in a row, to master this region.`, cls: '' };
   return { text: `Perfect round streak: ${p.streak} of ${target}. Keep it clean.`, cls: 'good' };
 }
 
@@ -1562,7 +1566,7 @@ function finishRound() {
   const perfect = r.mistakes === 0;
   const frontier = journeyIsFrontier();
   if (!frontier) {
-    setMsg(perfect ? 'Clean review round. Nice.' : `Review round done, ${r.mistakes} ${r.mistakes === 1 ? 'slip' : 'slips'}.`, perfect ? 'good' : '');
+    setMsg(perfect ? `${praise()} Clean practice round.` : `Practice round done, ${r.mistakes} ${r.mistakes === 1 ? 'slip' : 'slips'}.`, perfect ? 'good' : '');
     renderCtx(); return;
   }
   const target = stateProg().target;
@@ -1571,18 +1575,23 @@ function finishRound() {
     p.streak++;
     if (p.streak >= target) {
       p.streak = 0;
+      let nextName = '';
       if (S.subject === 'colonies') {
         p.frontier = Math.min(13, p.frontier + colonyBlockCodes().length);
       } else {
-        stateProg().mastered++;
-        stateProg().active = Math.min(stateProg().mastered, 4);
+        const st = stateProg();
+        if (!st.masteredBlocks.includes(activeBlockIdx())) st.masteredBlocks.push(activeBlockIdx());
+        for (let k = 1; k <= 5; k++) {
+          const cand = (activeBlockIdx() + k) % 5;
+          if (!st.masteredBlocks.includes(cand)) { st.active = cand; nextName = BLOCKS[cand].name; break; }
+        }
       }
       save();
       confettiBurst();
       haptic([40, 60, 40, 60, 90]);
       const doneAll = S.subject === 'colonies' ? coloniesAllMastered() : statesAllMastered();
       if (doneAll) setMsg(S.subject === 'colonies' ? 'All 13 colonies mastered 🏆' : 'Coast to coast 🇺🇸 All 50 states mastered 🏆', 'good');
-      else setMsg('Block mastered 🏆 The next one just unlocked 🎉', 'good');
+      else setMsg(`Region mastered 🏆${nextName ? ` Up next: ${nextName} 🎉` : ''}`, 'good');
       renderTrail(); renderCtx(); paintBase(); reLabelPlaced();
       return;
     }
@@ -1602,10 +1611,9 @@ function reLabelPlaced() {
 /* ================= quiz ================= */
 
 function quizPool() {
-  if (S.subject === 'colonies') return unlockedCodes('colonies');
-  if (S.quizSet === 'unlocked') return unlockedCodes('states');
+  if (S.subject === 'colonies') return COLONIES.slice();
   const i = Number(S.quizSet);
-  return BLOCKS[i] ? BLOCKS[i].codes.slice() : unlockedCodes('states');
+  return BLOCKS[i] ? BLOCKS[i].codes.slice() : BLOCKS.flatMap(b => b.codes);
 }
 function startQuiz() {
   const pool = quizPool();
@@ -1655,7 +1663,7 @@ function nextQuiz() {
 /* ================= timed ================= */
 
 let timerInt = null;
-function timedPool() { return unlockedCodes(S.subject); }
+function timedPool() { return spellPool(); }
 function startTimed() {
   const pool = timedPool();
   S.timed = {
@@ -2290,9 +2298,8 @@ function renderCtx() {
     const q = S.quiz;
     h += `<div class="ctx-title">Find it on the map 🔎</div>`;
     if (!isCol) {
-      const upTo = Math.min(stateProg().mastered + 1, 5);
-      h += `<div class="quiz-sets" id="quizSets"><button data-set="unlocked" aria-pressed="${S.quizSet === 'unlocked'}">All unlocked</button>`;
-      for (let i = 0; i < upTo; i++) h += `<button data-set="${i}" aria-pressed="${S.quizSet === String(i)}">${BLOCKS[i].name}</button>`;
+      h += `<div class="quiz-sets" id="quizSets"><button data-set="all" aria-pressed="${S.quizSet !== null && !BLOCKS[Number(S.quizSet)]}">All 50</button>`;
+      BLOCKS.forEach((b, i) => { h += `<button data-set="${i}" aria-pressed="${S.quizSet === String(i)}">${b.name}</button>`; });
       h += `</div>`;
     }
     if (q && !q.done) {
@@ -2306,8 +2313,17 @@ function renderCtx() {
   } else if (S.mode === 'timed') {
     const t = S.timed;
     const pool = timedPool();
-    const setName = isCol ? (pool.length === 13 ? 'All 13 colonies' : `${pool.length} unlocked colonies`) : (pool.length === 50 ? 'Full 50' : `${pool.length} unlocked states`);
+    const setName = isCol ? (pool.length === 13 ? 'All 13 colonies' : `${pool.length} colonies`) : (pool.length >= 50 ? `Full ${pool.length}` : `${pool.length} states`);
     h += `<div class="ctx-title">Race the clock ⏱️</div>`;
+    if (!t || !t.running) {
+      const scopeSel = spellScopeSel();
+      h += `<div class="quiz-sets" id="spellScope">`;
+      h += `<button data-scope="all" aria-pressed="${scopeSel.has('all')}">${isCol ? 'All 13' : 'All 50'}</button>`;
+      (isCol ? COLONY_GROUPS : BLOCKS).forEach((g, i) => {
+        h += `<button data-scope="${i}" aria-pressed="${scopeSel.has(i)}">${g.name}</button>`;
+      });
+      h += `</div>`;
+    }
     h += `<div class="seg" id="styleSeg"><button data-style="tap" aria-pressed="${S.timedStyle === 'tap'}">Tap</button><button data-style="drag" aria-pressed="${S.timedStyle === 'drag'}">Drag</button></div>`;
     h += `<div class="timer-read" id="timerRead">${t ? fmtTime(elapsedMs()) : '0:00.0'}</div>`;
     if (t && t.running && t.style === 'tap') h += `<div class="prompt-name">${NAMES[t.seq[t.i]]}</div>`;
@@ -2840,7 +2856,8 @@ function adoptProgress(p) {
   if (!p || typeof p !== 'object') return;
   adopting = true;
   try {
-    store.states = { mastered: 0, streak: 0, target: 3, active: 0, ...(p.states || {}) };
+    store.states = { mastered: 0, masteredBlocks: [], streak: 0, target: 3, active: 0, ...(p.states || {}) };
+    normalizeStates(store.states);
     store.colonies = { frontier: 0, streak: 0, blockSize: 3, ...(p.colonies || {}) };
     store.best = p.best || {};
     store.updatedAt = p.updatedAt || Date.now();
