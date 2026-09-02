@@ -385,6 +385,21 @@
     font-weight: 600;
   }
   .spell-miss .typed { color: var(--ink-soft); text-decoration: line-through; margin-right: 8px; }
+  .hot-streak {
+    align-self: flex-start;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 99px;
+    padding: 4px 13px;
+    font-weight: 800;
+    font-size: 13px;
+  }
+  .hot-streak.pop { animation: streakPop .5s; }
+  @keyframes streakPop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.3) rotate(-3deg); }
+    100% { transform: scale(1); }
+  }
 
   .state-shape {
     fill: var(--land);
@@ -812,6 +827,7 @@
           <button role="menuitem" data-mode="explore" aria-selected="false">Explore</button>
         </div>
       </div>
+      <div class="hot-streak" id="hotStreakChip" hidden></div>
       <div id="ctxBody" style="display:flex;flex-direction:column;gap:10px;"></div>
       <div class="tray-panel-side">
         <div class="tray-head">
@@ -968,7 +984,7 @@ const S = {
   timed: null,
   quizSet: 'unlocked',
   timedStyle: 'tap',
-  spell: { target: null, round: null, done: null },
+  spell: { target: null, round: null, done: null, endless: false, lastEndless: null },
   neZoom: false
 };
 
@@ -1309,7 +1325,7 @@ function renderTrail() {
       if (locked) { btn.classList.add('locked'); btn.disabled = true; }
       if (S.mode === 'journey' && i === activeBlockIdx() && !statesAllMastered() || (statesAllMastered() && S.mode === 'journey' && i === activeBlockIdx())) btn.classList.add('active-block');
       let sub;
-      if (mastered) sub = '<span>Mastered &#9733;</span>';
+      if (mastered) sub = '<span>Mastered 🏆</span>';
       else if (current) sub = `<span class="streak-dots">${dotHtml(p.streak, p.target)}</span><span>${p.streak} of ${p.target}</span>`;
       else sub = '<span>Locked</span>';
       btn.innerHTML = `<span class="num">${b.numeral}</span><span><span class="t-name">${b.name}</span><span class="t-sub">${sub}</span></span>`;
@@ -1395,17 +1411,20 @@ function handleDrop(tileCode, targetCode) {
     addLabel(tileCode);
     flash(tileCode, 'flash-good');
     haptic(30);
+    streakUp(tileCode);
+    confettiPop(tileCode, 12);
     if (r.placed.size === r.tiles.length) finishRound();
     render();
   } else {
     r.mistakes++;
     haptic([30, 50, 30]);
+    streakReset();
     r.missBy[tileCode] = (r.missBy[tileCode] || 0) + 1;
     flash(targetCode, 'flash-bad');
     const tileEl = document.querySelector(`.tile[data-code="${tileCode}"]`);
     if (tileEl) { tileEl.classList.remove('shake'); requestAnimationFrame(() => tileEl.classList.add('shake')); }
     if (r.missBy[tileCode] >= 2) flash(tileCode, 'pulse-hint');
-    setMsg(`Not quite. That was ${NAMES[targetCode] || 'open water'}.`, 'bad');
+    setMsg(`${gentle()} That was ${NAMES[targetCode] || 'open water'}.`, 'bad');
   }
 }
 
@@ -1434,13 +1453,13 @@ function finishRound() {
       confettiBurst();
       haptic([40, 60, 40, 60, 90]);
       const doneAll = S.subject === 'colonies' ? coloniesAllMastered() : statesAllMastered();
-      if (doneAll) setMsg(S.subject === 'colonies' ? 'All 13 colonies, mastered ★' : 'Coast to coast. All 50 states mastered ★', 'good');
-      else setMsg('Block mastered ★ The next one just unlocked.', 'good');
+      if (doneAll) setMsg(S.subject === 'colonies' ? 'All 13 colonies mastered 🏆' : 'Coast to coast 🇺🇸 All 50 states mastered 🏆', 'good');
+      else setMsg('Block mastered 🏆 The next one just unlocked 🎉', 'good');
       renderTrail(); renderCtx(); paintBase(); reLabelPlaced();
       return;
     }
     save();
-    setMsg(`Perfect round. ${p.streak} of ${target} in a row.`, 'good');
+    setMsg(`Perfect round 🎯 ${p.streak} of ${target} in a row.`, 'good');
   } else {
     const had = p.streak;
     p.streak = 0; save();
@@ -1474,11 +1493,12 @@ function quizTap(code) {
     addLabel(code);
     flash(code, 'flash-good');
     haptic(25);
-    if (q.tries === 0) q.right++;
+    if (q.tries === 0) { q.right++; streakUp(code); confettiPop(code, 12); }
     nextQuiz();
   } else {
     q.tries++;
     haptic([30, 50, 30]);
+    streakReset();
     flash(code, 'flash-bad');
     if (q.tries >= 3) {
       q.revealed++;
@@ -1498,7 +1518,8 @@ function nextQuiz() {
   if (q.i >= q.seq.length) {
     q.done = true;
     const pct = Math.round(100 * q.right / q.seq.length);
-    setMsg(`Done: ${q.right} of ${q.seq.length} on the first try (${pct}%).`, pct >= 80 ? 'good' : '');
+    if (pct === 100) { confettiBurst(); haptic([40, 60, 40, 60, 90]); }
+    setMsg(`${gradeLine(q.right, q.seq.length)} First tries only.`, pct >= 80 ? 'good' : '');
   } else setMsg('', '');
   renderCtx();
 }
@@ -1538,12 +1559,14 @@ function timedTap(code) {
     setFill(code, hueOf(code, S.subject));
     flash(code, 'flash-good');
     haptic(20);
+    streakUp(code);
     t.i++;
     if (t.i >= t.seq.length) endTimed();
     renderCtx();
   } else {
     t.penalty += 2000;
     haptic([30, 50, 30]);
+    streakReset();
     flash(code, 'flash-bad');
     setMsg('+2s. That was ' + NAMES[code] + '.', 'bad');
   }
@@ -1556,11 +1579,13 @@ function timedDrop(tileCode, targetCode) {
     setFill(tileCode, hueOf(tileCode, S.subject));
     flash(tileCode, 'flash-good');
     haptic(20);
+    streakUp(tileCode);
     if (t.placed.size === t.tiles.length) endTimed();
     render();
   } else {
     t.penalty += 2000;
     haptic([30, 50, 30]);
+    streakReset();
     flash(targetCode, 'flash-bad');
     setMsg('+2s penalty.', 'bad');
   }
@@ -1575,7 +1600,7 @@ function endTimed() {
   const prev = store.best[key];
   const isBest = !prev || total < prev;
   if (isBest) { store.best[key] = total; save(); confettiBurst(); }
-  setMsg(isBest ? `New best: ${fmtTime(total)} ★` : `Time: ${fmtTime(total)} &middot; best ${fmtTime(prev)}.`, isBest ? 'good' : '');
+  setMsg(isBest ? `New best ⏱️🏆 ${fmtTime(total)}` : `Time: ${fmtTime(total)} &middot; best ${fmtTime(prev)}.`, isBest ? 'good' : '');
   renderCtx();
 }
 
@@ -1731,6 +1756,32 @@ function spellDiffHtml(typed, correct) {
   if (t.length > correct.length) h += `<span class="bad">&hellip;</span>`;
   return `<span class="spell-diff">${h}</span>`;
 }
+let endlessTimer = 0;
+function pickEndless() {
+  const pool = spellPool();
+  let code;
+  do { code = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && code === S.spell.lastEndless);
+  S.spell.lastEndless = code;
+  setSpellTarget(code);
+  const inp = $('#spellInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+function startEndless() {
+  S.spell.endless = true;
+  S.spell.done = null;
+  setMsg('', '');
+  paintBase();
+  renderCtx();
+  pickEndless();
+}
+function stopEndless() {
+  clearTimeout(endlessTimer);
+  S.spell.endless = false;
+  S.spell.target = null;
+  clearSpellTarget();
+  setMsg(hotStreak >= 2 ? `${streakLabel()} — nice run.` : '', hotStreak >= 2 ? 'good' : '');
+  renderCtx();
+}
 function startSpellRound() {
   S.spell.round = { seq: shuffle(spellPool()), i: 0, results: [] };
   S.spell.done = null;
@@ -1750,7 +1801,7 @@ function finishSpellRound() {
   const right = r.results.filter(x => x.ok).length;
   const pct = Math.round(100 * right / r.results.length);
   if (right === r.results.length) { confettiBurst(); haptic([40, 60, 40, 60, 90]); }
-  setMsg(`Spelled ${right} of ${r.results.length} right (${pct}%).${right === r.results.length ? ' Perfect ★' : ''}`, pct >= 80 ? 'good' : '');
+  setMsg(gradeLine(right, r.results.length), pct >= 80 ? 'good' : '');
   renderCtx();
 }
 function spellSubmit() {
@@ -1762,14 +1813,30 @@ function spellSubmit() {
   const correct = NAMES[code];
   const ok = normSpell(typed) === normSpell(correct);
   const r = S.spell.round;
+  if (S.spell.endless) {
+    if (ok) {
+      streakUp(code); confettiPop(code, 16); haptic(25);
+      setFill(code, hueOf(code, S.subject)); addLabel(code); flash(code, 'flash-good');
+      setMsg(`${praise()} ${esc(correct)}`, 'good');
+    } else {
+      streakReset(); haptic([30, 50, 30]); flash(code, 'flash-bad');
+      setMsg(`${gentle()} It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad');
+    }
+    clearSpellTarget();
+    S.spell.target = null;
+    inp.value = '';
+    clearTimeout(endlessTimer);
+    endlessTimer = setTimeout(() => { if (S.mode === 'spell' && S.spell.endless) pickEndless(); }, ok ? 800 : 2400);
+    return;
+  }
   if (r) {
     r.results.push({ code, typed, ok });
     if (nameSel.spellTiming !== 'end') {
-      if (ok) { haptic(25); flash(code, 'flash-good'); setMsg(`Correct. ${esc(correct)} ★`, 'good'); }
-      else { haptic([30, 50, 30]); flash(code, 'flash-bad'); setMsg(`It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad'); }
+      if (ok) { streakUp(code); confettiPop(code, 14); haptic(25); flash(code, 'flash-good'); setMsg(`${praise()} ${esc(correct)}`, 'good'); }
+      else { streakReset(); haptic([30, 50, 30]); flash(code, 'flash-bad'); setMsg(`${gentle()} It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad'); }
     } else {
       haptic(12);
-      setMsg(`Answer ${r.results.length} of ${r.seq.length} locked in.`, '');
+      setMsg(`Answer ${r.results.length} of ${r.seq.length} locked in 🔒`, '');
     }
     r.i++;
     if (r.i >= r.seq.length) { finishSpellRound(); return; }
@@ -1779,17 +1846,14 @@ function spellSubmit() {
     if (ni) { ni.value = ''; ni.focus(); }
   } else {
     if (ok) {
-      haptic(25);
-      setFill(code, hueOf(code, S.subject));
-      addLabel(code);
-      flash(code, 'flash-good');
-      setMsg(`Correct. ${esc(correct)} ★`, 'good');
+      streakUp(code); confettiPop(code, 16); haptic(25);
+      setFill(code, hueOf(code, S.subject)); addLabel(code); flash(code, 'flash-good');
+      setMsg(`${praise()} ${esc(correct)}`, 'good');
       clearSpellTarget();
       S.spell.target = null;
     } else {
-      haptic([30, 50, 30]);
-      flash(code, 'flash-bad');
-      setMsg(`Not quite. It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad');
+      streakReset(); haptic([30, 50, 30]); flash(code, 'flash-bad');
+      setMsg(`${gentle()} It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad');
     }
     renderCtx();
     const ni = $('#spellInput');
@@ -1827,7 +1891,7 @@ function renderCtx() {
     }
   } else if (S.mode === 'quiz') {
     const q = S.quiz;
-    h += `<div class="ctx-title">Find it on the map</div>`;
+    h += `<div class="ctx-title">Find it on the map 🔎</div>`;
     if (!isCol) {
       const upTo = Math.min(stateProg().mastered + 1, 5);
       h += `<div class="quiz-sets" id="quizSets"><button data-set="unlocked" aria-pressed="${S.quizSet === 'unlocked'}">All unlocked</button>`;
@@ -1846,7 +1910,7 @@ function renderCtx() {
     const t = S.timed;
     const pool = timedPool();
     const setName = isCol ? (pool.length === 13 ? 'All 13 colonies' : `${pool.length} unlocked colonies`) : (pool.length === 50 ? 'Full 50' : `${pool.length} unlocked states`);
-    h += `<div class="ctx-title">Race the clock</div>`;
+    h += `<div class="ctx-title">Race the clock ⏱️</div>`;
     h += `<div class="seg" id="styleSeg"><button data-style="tap" aria-pressed="${S.timedStyle === 'tap'}">Tap</button><button data-style="drag" aria-pressed="${S.timedStyle === 'drag'}">Drag</button></div>`;
     h += `<div class="timer-read" id="timerRead">${t ? fmtTime(elapsedMs()) : '0:00.0'}</div>`;
     if (t && t.running && t.style === 'tap') h += `<div class="prompt-name">${NAMES[t.seq[t.i]]}</div>`;
@@ -1858,8 +1922,8 @@ function renderCtx() {
   } else if (S.mode === 'spell') {
     const sp = S.spell, r = sp.round;
     const scopeSel = spellScopeSel();
-    h += `<div class="ctx-title">Spell it</div>`;
-    if (!r) {
+    h += `<div class="ctx-title">Spell it ✍️</div>`;
+    if (!r && !sp.endless) {
       h += `<div class="quiz-sets" id="spellScope">`;
       h += `<button data-scope="all" aria-pressed="${scopeSel.has('all')}">${isCol ? 'All 13' : 'All 50'}</button>`;
       (isCol ? COLONY_GROUPS : BLOCKS).forEach((g, i) => {
@@ -1868,23 +1932,25 @@ function renderCtx() {
       h += `</div>`;
       h += `<div class="seg" id="spellTimingSeg"><button data-t="now" aria-pressed="${nameSel.spellTiming !== 'end'}">Check right away</button><button data-t="end" aria-pressed="${nameSel.spellTiming === 'end'}">Results at the end</button></div>`;
     }
-    if (r) h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; spell the glowing ${isCol ? 'colony' : 'state'}</div>`;
+    if (sp.endless) h += `<div class="ctx-sub">🎲 The map picks, you spell. Build that streak.</div>`;
+    else if (r) h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; spell the glowing ${isCol ? 'colony' : 'state'}</div>`;
     else if (sp.target) h += `<div class="ctx-sub">Spell the glowing ${isCol ? 'colony' : 'state'}</div>`;
-    else h += `<div class="ctx-sub">Tap any ${isCol ? 'colony' : 'state'} and type its name, or run a round over your picks above.</div>`;
-    if (r || sp.target) {
+    else h += `<div class="ctx-sub">Tap a ${isCol ? 'colony' : 'state'} yourself, or let the map pick for you.</div>`;
+    if (r || sp.target || sp.endless) {
       h += `<div class="spell-row"><input id="spellInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="Type the name"><button class="btn" id="spellCheck">Check</button></div>`;
     }
     h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
-    if (!r && sp.done) {
+    if (!r && !sp.endless && sp.done) {
       const misses = sp.done.results.filter(x => !x.ok);
       if (misses.length) {
         h += `<div class="spell-misses">` + misses.map(m =>
           `<div class="spell-miss"><span class="typed">${esc(m.typed) || '&mdash;'}</span>${spellDiffHtml(m.typed, NAMES[m.code])}</div>`).join('') + `</div>`;
       }
     }
-    if (!r) h += `<button class="btn" id="spellRoundBtn">${sp.done ? 'Another round' : 'Start a round'}</button>`;
+    if (sp.endless) h += `<button class="btn ghost" id="spellStopBtn">Stop 🎲</button>`;
+    else if (!r) h += `<div class="btn-row"><button class="btn" id="spellRoundBtn">${sp.done ? 'Another round 🎯' : `Round of ${spellPool().length} 🎯`}</button><button class="btn ghost" id="spellEndlessBtn">Endless 🎲</button></div>`;
   } else {
-    h += `<div class="ctx-title">Explore the map</div>`;
+    h += `<div class="ctx-title">Explore the map 🧭</div>`;
     h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. The Names button on the map can show whole regions. No score, no clock.</div>`;
   }
   body.innerHTML = h;
@@ -1903,6 +1969,8 @@ function renderCtx() {
   const sc = $('#spellCheck'); if (sc) sc.addEventListener('click', spellSubmit);
   const si = $('#spellInput'); if (si) si.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); spellSubmit(); } });
   const srb = $('#spellRoundBtn'); if (srb) srb.addEventListener('click', startSpellRound);
+  const seb = $('#spellEndlessBtn'); if (seb) seb.addEventListener('click', startEndless);
+  const ssb = $('#spellStopBtn'); if (ssb) ssb.addEventListener('click', stopEndless);
   const sts = $('#spellTimingSeg'); if (sts) sts.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     nameSel.spellTiming = b.dataset.t;
@@ -1966,7 +2034,39 @@ function setDropHover(code, on) {
   if (shapes[code]) shapes[code].classList.toggle('drop-hover', on);
   if (chips[code]) chips[code].classList.toggle('drop-hover', on);
 }
-function haptic(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch {} }
+function haptic(p) { try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(p); } catch {} }
+const PRAISE = ['Nailed it 🎯', 'Boom 💥', 'Perfect ⭐', 'You got it 🙌', 'Sharp ✨', 'Big brain 🧠', 'On a roll 🔥'];
+const GENTLE = ['Almost 👀', 'So close 🤏', 'Not quite 🔍', 'Good try 💪'];
+function praise() { return PRAISE[Math.floor(Math.random() * PRAISE.length)]; }
+function gentle() { return GENTLE[Math.floor(Math.random() * GENTLE.length)]; }
+function gradeLine(right, total) {
+  const pct = Math.round(100 * right / total);
+  if (pct === 100) return `🏆 PERFECT! ${right} of ${total}!`;
+  if (pct >= 90) return `🌟 ${right} of ${total} (${pct}%). So close to perfect!`;
+  if (pct >= 75) return `💪 ${right} of ${total} (${pct}%). Strong.`;
+  if (pct >= 50) return `📈 ${right} of ${total} (${pct}%). Getting there.`;
+  return `📚 ${right} of ${total} (${pct}%). Run it back.`;
+}
+let hotStreak = 0;
+function streakLabel() {
+  const e = hotStreak >= 12 ? '🏆' : hotStreak >= 8 ? '🌟' : hotStreak >= 5 ? '⚡' : '🔥';
+  return `${e} ${hotStreak} in a row`;
+}
+function updateStreakUi() {
+  const el = $('#hotStreakChip');
+  if (el) { el.hidden = hotStreak < 2; el.textContent = streakLabel(); }
+}
+function streakUp(code) {
+  hotStreak++;
+  updateStreakUi();
+  if ([3, 5, 8, 12].includes(hotStreak) || (hotStreak > 12 && hotStreak % 5 === 0)) {
+    confettiPop(code, 36);
+    haptic([20, 40, 20]);
+    const el = $('#hotStreakChip');
+    if (el) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+  }
+}
+function streakReset() { hotStreak = 0; updateStreakUi(); }
 /* The drop point is the GHOST's visual center, not the finger/cursor —
    what lights up is exactly what the drop will hit. */
 function ghostAnchor(d, cx, cy) {
@@ -2083,41 +2183,56 @@ function colonyAlias(code) { return (S.subject === 'colonies' && code === 'me') 
 
 /* ================= confetti ================= */
 
-function confettiBurst() {
+const confettiEngine = { parts: [], raf: 0 };
+function confettiSpawn(x, y, count, power, emojiShare) {
   if (reduceMotion) return;
   const cv = $('#confetti');
   const wrap = cv.parentElement.getBoundingClientRect();
-  cv.width = wrap.width; cv.height = wrap.height;
-  const ctx = cv.getContext('2d');
+  if (cv.width !== Math.round(wrap.width) || cv.height !== Math.round(wrap.height)) {
+    cv.width = Math.round(wrap.width); cv.height = Math.round(wrap.height);
+  }
   const hues = ['#4FB3A1', '#EC9265', '#E0BC55', '#A188D2', '#64A0DE', '#2C5FAE'];
-  const parts = [];
-  for (let i = 0; i < 130; i++) parts.push({
-    x: cv.width / 2 + (Math.random() - .5) * 160,
-    y: cv.height * .45,
-    vx: (Math.random() - .5) * 11,
-    vy: -Math.random() * 10 - 3,
-    w: 5 + Math.random() * 5,
-    h: 8 + Math.random() * 6,
-    r: Math.random() * Math.PI,
-    vr: (Math.random() - .5) * .3,
-    c: hues[i % hues.length]
-  });
-  const t0 = performance.now();
-  (function frame(now) {
-    const k = (now - t0) / 1600;
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    if (k >= 1) return;
-    for (const p of parts) {
-      p.x += p.vx; p.y += p.vy; p.vy += .28; p.r += p.vr;
-      ctx.save();
-      ctx.translate(p.x, p.y); ctx.rotate(p.r);
-      ctx.globalAlpha = Math.max(0, 1 - k * 1.1);
-      ctx.fillStyle = p.c;
-      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
-    }
-    requestAnimationFrame(frame);
-  })(t0);
+  const emojis = ['⭐', '🎉', '✨'];
+  for (let i = 0; i < count; i++) {
+    confettiEngine.parts.push({
+      x: x + (Math.random() - .5) * 30,
+      y: y + (Math.random() - .5) * 10,
+      vx: (Math.random() - .5) * 8 * power,
+      vy: -Math.random() * 8 * power - 2,
+      w: 5 + Math.random() * 5, h: 8 + Math.random() * 6,
+      r: Math.random() * Math.PI, vr: (Math.random() - .5) * .3,
+      c: hues[i % hues.length],
+      e: Math.random() < emojiShare ? emojis[Math.floor(Math.random() * emojis.length)] : null,
+      life: 0, ttl: 70 + Math.random() * 30
+    });
+  }
+  if (!confettiEngine.raf) confettiEngine.raf = requestAnimationFrame(confettiFrame);
+}
+function confettiFrame() {
+  const cv = $('#confetti'), ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  confettiEngine.parts = confettiEngine.parts.filter(p => p.life < p.ttl && p.y < cv.height + 24);
+  for (const p of confettiEngine.parts) {
+    p.x += p.vx; p.y += p.vy; p.vy += .28; p.r += p.vr; p.life++;
+    ctx.save();
+    ctx.translate(p.x, p.y); ctx.rotate(p.r);
+    ctx.globalAlpha = Math.max(0, 1 - p.life / p.ttl);
+    if (p.e) { ctx.font = '15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.e, 0, 5); }
+    else { ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); }
+    ctx.restore();
+  }
+  confettiEngine.raf = confettiEngine.parts.length ? requestAnimationFrame(confettiFrame) : 0;
+}
+function confettiBurst() {
+  const wrap = $('#confetti').parentElement.getBoundingClientRect();
+  confettiSpawn(wrap.width / 2, wrap.height * .45, 130, 1.4, .12);
+}
+function confettiPop(code, count = 18) {
+  const wrapR = $('#confetti').parentElement.getBoundingClientRect();
+  const el = (chips[code] && !chips[code].classList.contains('muted')) ? chips[code] : shapes[code];
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  confettiSpawn(r.x + r.width / 2 - wrapR.x, r.y + r.height / 2 - wrapR.y, count, .7, .15);
 }
 
 /* ================= mode / subject switching ================= */
@@ -2125,8 +2240,10 @@ function confettiBurst() {
 function setMode(mode) {
   S.mode = mode;
   S.quiz = null; S.timed = null; clearInterval(timerInt);
-  S.spell = { target: null, round: null, done: null };
+  S.spell = { target: null, round: null, done: null, endless: false, lastEndless: null };
   clearSpellTarget();
+  clearTimeout(endlessTimer);
+  streakReset();
   setMsg('', '');
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
   $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', spell: 'Spell', explore: 'Explore' }[mode] || mode;
