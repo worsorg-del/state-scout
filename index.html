@@ -400,6 +400,34 @@
     40% { transform: scale(1.3) rotate(-3deg); }
     100% { transform: scale(1); }
   }
+  .abbr-prompt {
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 800;
+    font-size: 52px;
+    line-height: 1;
+    letter-spacing: .04em;
+    color: var(--accent);
+  }
+  .flag-card {
+    align-self: flex-start;
+    background: var(--surface-2);
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    padding: 8px;
+  }
+  .flag-card img {
+    display: block;
+    width: 170px;
+    max-width: 100%;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  .tip img.tip-flag {
+    display: block;
+    width: 72px;
+    border-radius: 4px;
+    margin-top: 5px;
+  }
 
   .state-shape {
     fill: var(--land);
@@ -824,6 +852,8 @@
           <button role="menuitem" data-mode="quiz" aria-selected="false">Quiz</button>
           <button role="menuitem" data-mode="timed" aria-selected="false">Timed</button>
           <button role="menuitem" data-mode="spell" aria-selected="false">Spell</button>
+          <button role="menuitem" data-mode="abbr" aria-selected="false">Letters</button>
+          <button role="menuitem" data-mode="flags" aria-selected="false">Flags</button>
           <button role="menuitem" data-mode="explore" aria-selected="false">Explore</button>
         </div>
       </div>
@@ -985,6 +1015,8 @@ const S = {
   quizSet: 'unlocked',
   timedStyle: 'tap',
   spell: { target: null, round: null, done: null, endless: false, lastEndless: null },
+  abbr: { style: 'find', round: null, done: null },
+  flags: { round: null, done: null },
   neZoom: false
 };
 
@@ -1756,6 +1788,144 @@ function spellDiffHtml(typed, correct) {
   if (t.length > correct.length) h += `<span class="bad">&hellip;</span>`;
   return `<span class="spell-diff">${h}</span>`;
 }
+/* ================= letters (abbreviations) & flags ================= */
+
+let advanceTimer = 0;
+function pulseState(code) {
+  clearSpellTarget();
+  if (code) {
+    shapes[code].classList.add('spell-target');
+    if (chips[code]) chips[code].classList.add('spell-target');
+  }
+}
+function roundAdvance(r, onNext, onDone, delay) {
+  r.i++;
+  if (r.i >= r.seq.length) {
+    clearTimeout(advanceTimer);
+    advanceTimer = setTimeout(onDone, delay);
+  } else {
+    clearTimeout(advanceTimer);
+    advanceTimer = setTimeout(onNext, delay);
+  }
+}
+function startAbbrRound() {
+  S.abbr.round = { seq: shuffle(spellPool()), i: 0, tries: 0, right: 0 };
+  S.abbr.done = null;
+  setMsg('', '');
+  paintBase();
+  if (S.abbr.style === 'type') pulseState(S.abbr.round.seq[0]);
+  renderCtx();
+  const inp = $('#abbrInput');
+  if (inp) inp.focus();
+}
+function finishAbbrRound() {
+  const r = S.abbr.round;
+  pulseState(null);
+  S.abbr.round = null;
+  S.abbr.done = r;
+  if (r.right === r.seq.length) { confettiBurst(); haptic([40, 60, 40, 60, 90]); }
+  setMsg(gradeLine(r.right, r.seq.length), r.right / r.seq.length >= .8 ? 'good' : '');
+  renderCtx();
+}
+function abbrTap(code) {
+  const r = S.abbr.round;
+  if (!r || S.abbr.style !== 'find') return;
+  const target = r.seq[r.i];
+  if (code === target) {
+    if (r.tries === 0) { r.right++; streakUp(code); confettiPop(code, 12); }
+    haptic(25);
+    setFill(code, hueOf(code, S.subject));
+    flash(code, 'flash-good');
+    setMsg(`${praise()} ${target.toUpperCase()} = ${esc(NAMES[target])}`, 'good');
+    r.tries = 0;
+    roundAdvance(r, renderCtx, finishAbbrRound, 600);
+  } else {
+    r.tries++;
+    streakReset();
+    haptic([30, 50, 30]);
+    flash(code, 'flash-bad');
+    if (r.tries >= 3) {
+      setFill(target, hueOf(target, S.subject));
+      flash(target, 'pulse-hint');
+      setMsg(`${target.toUpperCase()} = ${esc(NAMES[target])}. It’s glowing now.`, 'bad');
+      r.tries = 0;
+      roundAdvance(r, renderCtx, finishAbbrRound, 1800);
+    } else {
+      setMsg(`${gentle()} That one is ${code.toUpperCase()}. ${3 - r.tries} ${3 - r.tries === 1 ? 'try' : 'tries'} left.`, 'bad');
+    }
+  }
+}
+function abbrSubmit() {
+  const inp = $('#abbrInput');
+  const r = S.abbr.round;
+  if (!inp || !r || S.abbr.style !== 'type') return;
+  const typed = inp.value.trim().toUpperCase();
+  if (typed.length < 2) { inp.focus(); return; }
+  const target = r.seq[r.i];
+  const ok = typed === target.toUpperCase();
+  if (ok) {
+    r.right++;
+    streakUp(target); confettiPop(target, 12); haptic(25);
+    setFill(target, hueOf(target, S.subject));
+    flash(target, 'flash-good');
+    setMsg(`${praise()} ${esc(NAMES[target])} = ${target.toUpperCase()}`, 'good');
+  } else {
+    streakReset(); haptic([30, 50, 30]);
+    flash(target, 'flash-bad');
+    setMsg(`${gentle()} ${esc(NAMES[target])} is <span class="spell-diff"><span class="bad">${target.toUpperCase()}</span></span>, not ${esc(typed)}.`, 'bad');
+  }
+  inp.value = '';
+  roundAdvance(r, () => {
+    pulseState(r.seq[r.i]);
+    renderCtx();
+    const ni = $('#abbrInput');
+    if (ni) { ni.value = ''; ni.focus(); }
+  }, finishAbbrRound, ok ? 700 : 2200);
+}
+function startFlagRound() {
+  S.flags.round = { seq: shuffle(spellPool()), i: 0, tries: 0, right: 0 };
+  S.flags.done = null;
+  setMsg('', '');
+  paintBase();
+  renderCtx();
+}
+function finishFlagRound() {
+  const r = S.flags.round;
+  S.flags.round = null;
+  S.flags.done = r;
+  if (r.right === r.seq.length) { confettiBurst(); haptic([40, 60, 40, 60, 90]); }
+  setMsg(gradeLine(r.right, r.seq.length), r.right / r.seq.length >= .8 ? 'good' : '');
+  renderCtx();
+}
+function flagTap(code) {
+  const r = S.flags.round;
+  if (!r) return;
+  const target = r.seq[r.i];
+  if (code === target) {
+    if (r.tries === 0) { r.right++; streakUp(code); confettiPop(code, 12); }
+    haptic(25);
+    setFill(code, hueOf(code, S.subject));
+    flash(code, 'flash-good');
+    setMsg(`${praise()} That’s ${esc(NAMES[target])}’s flag`, 'good');
+    r.tries = 0;
+    roundAdvance(r, renderCtx, finishFlagRound, 700);
+  } else {
+    r.tries++;
+    streakReset();
+    haptic([30, 50, 30]);
+    flash(code, 'flash-bad');
+    if (r.tries >= 3) {
+      setFill(target, hueOf(target, S.subject));
+      flash(target, 'pulse-hint');
+      setMsg(`It’s ${esc(NAMES[target])}’s flag. Glowing now.`, 'bad');
+      r.tries = 0;
+      roundAdvance(r, renderCtx, finishFlagRound, 1800);
+    } else {
+      setMsg(`${gentle()} That was ${esc(NAMES[code])}. ${3 - r.tries} ${3 - r.tries === 1 ? 'try' : 'tries'} left.`, 'bad');
+    }
+  }
+}
+
 let endlessTimer = 0;
 function pickEndless() {
   const pool = spellPool();
@@ -1949,6 +2119,50 @@ function renderCtx() {
     }
     if (sp.endless) h += `<button class="btn ghost" id="spellStopBtn">Stop 🎲</button>`;
     else if (!r) h += `<div class="btn-row"><button class="btn" id="spellRoundBtn">${sp.done ? 'Another round 🎯' : `Round of ${spellPool().length} 🎯`}</button><button class="btn ghost" id="spellEndlessBtn">Endless 🎲</button></div>`;
+  } else if (S.mode === 'abbr') {
+    const a = S.abbr, r = a.round;
+    const scopeSel = spellScopeSel();
+    h += `<div class="ctx-title">Letter codes 🔤</div>`;
+    if (!r) {
+      h += `<div class="quiz-sets" id="spellScope">`;
+      h += `<button data-scope="all" aria-pressed="${scopeSel.has('all')}">${isCol ? 'All 13' : 'All 50'}</button>`;
+      (isCol ? COLONY_GROUPS : BLOCKS).forEach((g, i) => {
+        h += `<button data-scope="${i}" aria-pressed="${scopeSel.has(i)}">${g.name}</button>`;
+      });
+      h += `</div>`;
+      h += `<div class="seg" id="abbrStyleSeg"><button data-style="find" aria-pressed="${a.style === 'find'}">See code, tap map</button><button data-style="type" aria-pressed="${a.style === 'type'}">Type the code</button></div>`;
+    }
+    if (r && a.style === 'find') {
+      h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; tap the state with this code</div>`;
+      h += `<div class="abbr-prompt">${r.seq[r.i].toUpperCase()}</div>`;
+    } else if (r) {
+      h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; type the glowing state’s two letters</div>`;
+      h += `<div class="spell-row"><input id="abbrInput" type="text" maxlength="2" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="XX" style="text-transform:uppercase"><button class="btn" id="abbrCheck">Check</button></div>`;
+    } else {
+      h += `<div class="ctx-sub">Every state has a two-letter code, like TX or VT. Learn them both ways.</div>`;
+    }
+    h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
+    if (!r) h += `<button class="btn" id="abbrRoundBtn">${a.done ? 'Another round 🔤' : `Round of ${spellPool().length} 🔤`}</button>`;
+  } else if (S.mode === 'flags') {
+    const fl = S.flags, r = fl.round;
+    const scopeSel = spellScopeSel();
+    h += `<div class="ctx-title">Flags 🚩</div>`;
+    if (!r) {
+      h += `<div class="quiz-sets" id="spellScope">`;
+      h += `<button data-scope="all" aria-pressed="${scopeSel.has('all')}">${isCol ? 'All 13' : 'All 50'}</button>`;
+      (isCol ? COLONY_GROUPS : BLOCKS).forEach((g, i) => {
+        h += `<button data-scope="${i}" aria-pressed="${scopeSel.has(i)}">${g.name}</button>`;
+      });
+      h += `</div>`;
+    }
+    if (r) {
+      h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; whose flag is this? Tap the state.</div>`;
+      h += `<div class="flag-card"><img src="flags/us-${r.seq[r.i]}.png" alt="Mystery state flag"></div>`;
+    } else {
+      h += `<div class="ctx-sub">A flag appears, you tap its state. Explore mode shows each state’s flag when you tap around.</div>`;
+    }
+    h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
+    if (!r) h += `<button class="btn" id="flagRoundBtn">${fl.done ? 'Another round 🚩' : `Round of ${spellPool().length} 🚩`}</button>`;
   } else {
     h += `<div class="ctx-title">Explore the map 🧭</div>`;
     h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. The Names button on the map can show whole regions. No score, no clock.</div>`;
@@ -1971,6 +2185,15 @@ function renderCtx() {
   const srb = $('#spellRoundBtn'); if (srb) srb.addEventListener('click', startSpellRound);
   const seb = $('#spellEndlessBtn'); if (seb) seb.addEventListener('click', startEndless);
   const ssb = $('#spellStopBtn'); if (ssb) ssb.addEventListener('click', stopEndless);
+  const arb = $('#abbrRoundBtn'); if (arb) arb.addEventListener('click', startAbbrRound);
+  const ac = $('#abbrCheck'); if (ac) ac.addEventListener('click', abbrSubmit);
+  const ai = $('#abbrInput'); if (ai) ai.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); abbrSubmit(); } });
+  const asg = $('#abbrStyleSeg'); if (asg) asg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.abbr.style = b.dataset.style;
+    renderCtx();
+  });
+  const frb = $('#flagRoundBtn'); if (frb) frb.addEventListener('click', startFlagRound);
   const sts = $('#spellTimingSeg'); if (sts) sts.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     nameSel.spellTiming = b.dataset.t;
@@ -2011,6 +2234,8 @@ function renderTray() {
       : S.mode === 'timed' ? (S.timedStyle === 'drag' ? 'Start the clock to deal the names.' : 'Tap mode: no tray needed.')
       : S.mode === 'quiz' ? 'Quiz mode: the prompt is on the left.'
       : S.mode === 'spell' ? 'Spell mode: tap a state on the map, then type its name.'
+      : S.mode === 'abbr' ? 'Letters mode: start a round and match states to their two-letter codes.'
+      : S.mode === 'flags' ? 'Flags mode: start a round and tap the state each flag belongs to.'
       : 'Explore mode: just tap around the map.';
     tray.appendChild(d);
     return;
@@ -2149,6 +2374,8 @@ map.addEventListener('click', e => {
   if (!host || host.classList.contains('muted')) return;
   const code = host.dataset.code;
   if (S.mode === 'spell') { spellTap(code); return; }
+  if (S.mode === 'abbr') { abbrTap(code); return; }
+  if (S.mode === 'flags') { flagTap(code); return; }
   if (S.mode === 'explore') { exploreTap(code); return; }
   if (S.mode === 'quiz') { if (S.quiz && !S.quiz.done) quizTap(code); return; }
   if (S.mode === 'timed') { if (S.timed && S.timed.running) timedTap(code); return; }
@@ -2170,7 +2397,8 @@ map.addEventListener('pointermove', e => {
     (S.mode === 'journey' && (masteredCodes(S.subject).includes(code) || (S.round && S.round.placed.has(code))))
   );
   if (revealable) {
-    tip.innerHTML = NAMES[code] + (code === 'me' && S.subject === 'colonies' ? '<small>part of Massachusetts until 1820</small>' : '');
+    tip.innerHTML = NAMES[code] + (code === 'me' && S.subject === 'colonies' ? '<small>part of Massachusetts until 1820</small>' : '')
+      + (S.mode === 'explore' && S.subject === 'states' ? `<small>${code.toUpperCase()}</small><img class="tip-flag" src="flags/us-${code}.png" alt="">` : '');
     tip.style.left = e.clientX + 'px';
     tip.style.top = e.clientY + 'px';
     tip.classList.add('show');
@@ -2241,12 +2469,15 @@ function setMode(mode) {
   S.mode = mode;
   S.quiz = null; S.timed = null; clearInterval(timerInt);
   S.spell = { target: null, round: null, done: null, endless: false, lastEndless: null };
+  S.abbr = { style: S.abbr ? S.abbr.style : 'find', round: null, done: null };
+  S.flags = { round: null, done: null };
   clearSpellTarget();
   clearTimeout(endlessTimer);
+  clearTimeout(advanceTimer);
   streakReset();
   setMsg('', '');
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
-  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', spell: 'Spell', explore: 'Explore' }[mode] || mode;
+  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', spell: 'Spell', abbr: 'Letters', flags: 'Flags', explore: 'Explore' }[mode] || mode;
   $('#modeMenu').hidden = true;
   $('#modeBtn').setAttribute('aria-expanded', 'false');
   if (mode === 'journey') startRound();
