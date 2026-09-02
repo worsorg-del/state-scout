@@ -339,6 +339,34 @@
   .names-menu input { accent-color: var(--accent); width: 15px; height: 15px; }
   .names-menu .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
   .names-menu .names-divider { border-top: 1px solid var(--line); margin: 4px 2px; }
+  .names-menu .names-head {
+    font-size: 10.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--ink-soft);
+    padding: 4px 8px 2px;
+  }
+
+  /* polish pass */
+  .btn {
+    background: linear-gradient(180deg, color-mix(in srgb, #fff 14%, var(--accent)), var(--accent));
+    box-shadow: var(--shadow-sm);
+    transition: transform .12s, box-shadow .12s, filter .12s;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow); filter: brightness(1.04); }
+  .btn:active:not(:disabled) { transform: translateY(0); filter: brightness(.98); }
+  .btn.ghost { background: var(--surface-2); box-shadow: none; }
+  .map-card { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--surface)), var(--surface) 60%); }
+  .panel { box-shadow: var(--shadow-sm); }
+  .trail-chip, .tile, .choice-grid button, .quiz-sets button {
+    transition: transform .15s, box-shadow .15s, border-color .15s, background .15s, color .15s;
+  }
+  .choice-grid button:hover:not(:disabled), .quiz-sets button:hover { transform: translateY(-1px); }
+  .tip { border-radius: 10px; padding: 7px 12px; box-shadow: var(--shadow); }
+  dialog::backdrop { backdrop-filter: blur(3px); }
+  .names-menu label, .modes button { transition: background .12s, color .12s; }
+  .hot-streak { background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--b3) 28%, var(--accent-soft))); }
 
   .state-shape.drop-hover {
     fill: var(--land-hover);
@@ -849,7 +877,7 @@
     <div class="map-card">
       <div class="map-tools">
         <div class="names-wrap">
-          <button id="namesBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">Names</button>
+          <button id="namesBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">Labels</button>
           <div class="names-menu" id="namesMenu" hidden></div>
         </div>
         <button id="zoomNE" aria-pressed="false">Zoom Northeast</button>
@@ -964,7 +992,7 @@ const NAMES = {
   nm:'New Mexico', ny:'New York', nc:'North Carolina', nd:'North Dakota', oh:'Ohio', ok:'Oklahoma',
   or:'Oregon', pa:'Pennsylvania', ri:'Rhode Island', sc:'South Carolina', sd:'South Dakota',
   tn:'Tennessee', tx:'Texas', ut:'Utah', vt:'Vermont', va:'Virginia', wa:'Washington',
-  wv:'West Virginia', wi:'Wisconsin', wy:'Wyoming'
+  wv:'West Virginia', wi:'Wisconsin', wy:'Wyoming', dc:'Washington, D.C.'
 };
 
 const CAPITALS = {
@@ -977,6 +1005,34 @@ const CAPITALS = {
   or:'Salem', pa:'Harrisburg', ri:'Providence', sc:'Columbia', sd:'Pierre', tn:'Nashville',
   tx:'Austin', ut:'Salt Lake City', vt:'Montpelier', va:'Richmond', wa:'Olympia', wv:'Charleston',
   wi:'Madison', wy:'Cheyenne'
+};
+
+const DECOYS = {
+  al:['Birmingham','Huntsville','Mobile'], ak:['Anchorage','Fairbanks','Ketchikan'],
+  az:['Tucson','Mesa','Scottsdale'], ar:['Fayetteville','Fort Smith','Jonesboro'],
+  ca:['Los Angeles','San Francisco','San Diego'], co:['Boulder','Colorado Springs','Fort Collins'],
+  ct:['New Haven','Stamford','Bridgeport'], de:['Wilmington','Newark','Rehoboth Beach'],
+  fl:['Miami','Orlando','Jacksonville'], ga:['Savannah','Augusta','Athens'],
+  hi:['Hilo','Kailua','Pearl City'], id:['Idaho Falls','Coeur d’Alene','Twin Falls'],
+  il:['Chicago','Peoria','Naperville'], in:['Fort Wayne','Evansville','Bloomington'],
+  ia:['Cedar Rapids','Davenport','Iowa City'], ks:['Wichita','Overland Park','Lawrence'],
+  ky:['Louisville','Lexington','Bowling Green'], la:['New Orleans','Shreveport','Lafayette'],
+  me:['Portland','Bangor','Bar Harbor'], md:['Baltimore','Frederick','Ocean City'],
+  ma:['Worcester','Springfield','Cambridge'], mi:['Detroit','Grand Rapids','Ann Arbor'],
+  mn:['Minneapolis','Duluth','Rochester'], ms:['Gulfport','Biloxi','Hattiesburg'],
+  mo:['Kansas City','St. Louis','Branson'], mt:['Billings','Missoula','Bozeman'],
+  ne:['Omaha','Grand Island','Kearney'], nv:['Las Vegas','Reno','Henderson'],
+  nh:['Manchester','Nashua','Portsmouth'], nj:['Newark','Jersey City','Atlantic City'],
+  nm:['Albuquerque','Las Cruces','Roswell'], ny:['New York City','Buffalo','Rochester'],
+  nc:['Charlotte','Durham','Asheville'], nd:['Fargo','Grand Forks','Minot'],
+  oh:['Cleveland','Cincinnati','Dayton'], ok:['Tulsa','Norman','Broken Arrow'],
+  or:['Portland','Eugene','Bend'], pa:['Philadelphia','Pittsburgh','Allentown'],
+  ri:['Newport','Warwick','Cranston'], sc:['Charleston','Myrtle Beach','Greenville'],
+  sd:['Sioux Falls','Rapid City','Deadwood'], tn:['Memphis','Knoxville','Chattanooga'],
+  tx:['Houston','Dallas','San Antonio'], ut:['Provo','Ogden','Moab'],
+  vt:['Burlington','Stowe','Brattleboro'], va:['Virginia Beach','Norfolk','Alexandria'],
+  wa:['Seattle','Spokane','Tacoma'], wv:['Morgantown','Huntington','Wheeling'],
+  wi:['Milwaukee','Green Bay','Kenosha'], wy:['Jackson','Casper','Laramie']
 };
 
 const BLOCKS = [
@@ -1004,7 +1060,7 @@ const LABEL_NUDGE = {
   mo:[.02,.05], il:[-.02,.1], al:[0,.05], ms:[0,.02], in:[0,.12], oh:[.02,.05], me:[-.05,.15]
 };
 /* small states that get a leader-line callout chip in the Atlantic */
-const CALLOUTS = ['nh','ma','ri','ct','nj','de','md'];
+const CALLOUTS = ['nh', 'ma', 'ri', 'ct', 'nj', 'de', 'md', 'dc'];
 
 /* ================= storage ================= */
 
@@ -1084,6 +1140,7 @@ function unlockedCodes(subject) {
 function subjectCodes(subject) { return subject === 'colonies' ? COLONIES : Object.keys(NAMES); }
 function hueOf(code, subject) {
   if (subject === 'colonies') return COLONY_GROUP_OF[code] ? COLONY_GROUP_OF[code].hue : 'var(--land)';
+  if (code === 'dc') return 'var(--b2)';
   return BLOCKS[BLOCK_OF[code]].hue;
 }
 function masteredCodes(subject) {
@@ -1100,8 +1157,14 @@ function buildMap() {
   map.innerHTML = '';
   const gShapes = document.createElementNS(SVGNS, 'g');
   for (const code of Object.keys(NAMES)) {
-    const p = document.createElementNS(SVGNS, 'path');
-    p.setAttribute('d', PATHS[code]);
+    let p;
+    if (code === 'dc') {
+      p = document.createElementNS(SVGNS, 'circle');
+      p.setAttribute('cx', 801.6); p.setAttribute('cy', 252.1); p.setAttribute('r', 6);
+    } else {
+      p = document.createElementNS(SVGNS, 'path');
+      p.setAttribute('d', PATHS[code]);
+    }
     p.setAttribute('class', 'state-shape');
     p.dataset.code = code;
     gShapes.appendChild(p);
@@ -1128,7 +1191,7 @@ function buildMap() {
     const bb = bboxes[code];
     const ax = bb.x + bb.width * (code === 'md' ? .62 : .78);
     const ay = bb.y + bb.height * (code === 'md' ? .35 : .5);
-    const cw = 96, ch = 24, cx = 915;
+    const cw = 104, ch = 24, cx = 915;
     const g = document.createElementNS(SVGNS, 'g');
     g.setAttribute('class', 'callout-chip');
     g.dataset.code = code;
@@ -1213,7 +1276,7 @@ function flash(code, cls) {
 
 /* ================= viewBox / zoom ================= */
 
-const FULL_VB = [0, 0, 1018, 593];
+const FULL_VB = [0, 0, 1024, 593];
 let vbAnim = null;
 function unionBBox(codes, pad, includeChips) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -1222,7 +1285,7 @@ function unionBBox(codes, pad, includeChips) {
     x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
     x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
   }
-  if (includeChips) { x1 = Math.max(x1, 1015); y1 = Math.max(y1, 355); }
+  if (includeChips) { x1 = Math.max(x1, 1021); y1 = Math.max(y1, 380); }
   return [x0 - pad, y0 - pad, (x1 - x0) + pad * 2, (y1 - y0) + pad * 2];
 }
 function setViewBox(vb, animate = true) {
@@ -1693,10 +1756,11 @@ function loadNameSel() {
       states: new Set(p.states || []), colonies: new Set(p.colonies || []),
       spellStates: new Set(p.spellStates && p.spellStates.length ? p.spellStates : ['all']),
       spellColonies: new Set(p.spellColonies && p.spellColonies.length ? p.spellColonies : ['all']),
-      spellTiming: p.spellTiming === 'end' ? 'end' : 'now'
+      spellTiming: p.spellTiming === 'end' ? 'end' : 'now',
+      kind: ['name', 'code', 'capital', 'flag'].includes(p.kind) ? p.kind : 'name'
     };
   } catch {
-    return { states: new Set(), colonies: new Set(), spellStates: new Set(['all']), spellColonies: new Set(['all']), spellTiming: 'now' };
+    return { states: new Set(), colonies: new Set(), spellStates: new Set(['all']), spellColonies: new Set(['all']), spellTiming: 'now', kind: 'name' };
   }
 }
 const nameSel = loadNameSel();
@@ -1705,7 +1769,7 @@ function saveNameSel() {
     localStorage.setItem(VIEWKEY, JSON.stringify({
       states: [...nameSel.states], colonies: [...nameSel.colonies],
       spellStates: [...nameSel.spellStates], spellColonies: [...nameSel.spellColonies],
-      spellTiming: nameSel.spellTiming
+      spellTiming: nameSel.spellTiming, kind: nameSel.kind
     }));
   } catch {}
 }
@@ -1719,41 +1783,78 @@ function namedCodes() {
   }
   const sel = nameSel.states;
   if (sel.has('all')) return Object.keys(NAMES);
-  return [...sel].flatMap(i => (BLOCKS[i] ? BLOCKS[i].codes : []));
+  const out = [...sel].flatMap(i => (BLOCKS[i] ? BLOCKS[i].codes : []));
+  if (sel.has(1)) out.push('dc');
+  return out;
 }
 function renderNameLayer() {
   if (!gNames) return;
   gNames.innerHTML = '';
   for (const c of Object.keys(chips)) if (!chips[c].classList.contains('placed')) chips[c].classList.remove('revealed');
+  const kind = nameSel.kind || 'name';
   for (const code of namedCodes()) {
-    if (labels[code]) continue;
-    if (chips[code]) {
-      if (!chips[code].classList.contains('muted')) chips[code].classList.add('revealed');
+    if (kind === 'name') {
+      if (labels[code]) continue;
+      if (chips[code]) {
+        if (!chips[code].classList.contains('muted')) chips[code].classList.add('revealed');
+        continue;
+      }
+      addNameText(labelPoint(code)[0], labelPoint(code)[1], bboxes[code].width < 46 ? code.toUpperCase() : NAMES[code], 10.5);
       continue;
     }
-    const [x, y] = labelPoint(code);
-    const t = document.createElementNS(SVGNS, 'text');
-    t.setAttribute('x', x); t.setAttribute('y', y);
-    t.setAttribute('class', 'map-label');
-    t.textContent = bboxes[code].width < 46 ? code.toUpperCase() : NAMES[code];
-    gNames.appendChild(t);
+    if (kind === 'capital' && !CAPITALS[code]) continue;
+    let x, y;
+    const chip = chips[code] && !chips[code].classList.contains('muted') ? chips[code] : null;
+    if (chip) {
+      const rc = chip.querySelector('rect');
+      x = Number(rc.getAttribute('x')) + Number(rc.getAttribute('width')) / 2;
+      y = Number(rc.getAttribute('y')) + Number(rc.getAttribute('height')) / 2;
+    } else {
+      [x, y] = labelPoint(code);
+      if (labels[code]) y += 9;
+    }
+    if (kind === 'flag') {
+      const img = document.createElementNS(SVGNS, 'image');
+      img.setAttribute('href', `flags/us-${code}.png`);
+      img.setAttribute('x', x - 13);
+      img.setAttribute('y', y - 8);
+      img.setAttribute('width', 26);
+      img.setAttribute('height', 16);
+      img.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      img.style.pointerEvents = 'none';
+      gNames.appendChild(img);
+    } else {
+      addNameText(x, y + (chip ? 3.5 : 0), kind === 'code' ? code.toUpperCase() : CAPITALS[code], kind === 'capital' ? 9.5 : 10.5);
+    }
   }
   const btn = $('#namesBtn');
   if (btn) btn.setAttribute('aria-pressed', String(namedCodes().length > 0));
+}
+function addNameText(x, y, str, size) {
+  const t = document.createElementNS(SVGNS, 'text');
+  t.setAttribute('x', x);
+  t.setAttribute('y', y);
+  t.setAttribute('class', 'map-label');
+  if (size !== 10.5) t.setAttribute('style', `font-size:${size}px`);
+  t.textContent = str;
+  gNames.appendChild(t);
 }
 function nameRow(key, label, hue, on) {
   return `<label>${hue ? `<span class="swatch" style="background:${hue}"></span>` : ''}<input type="checkbox" data-key="${key}" ${on ? 'checked' : ''}> ${label}</label>`;
 }
 function buildNamesMenu() {
   const menu = $('#namesMenu');
-  let h = '';
+  const kind = nameSel.kind || 'name';
+  let h = '<div class="names-head">Show</div>';
+  [['name', 'Names'], ['code', 'Codes'], ['capital', 'Capitals'], ['flag', 'Flags']].forEach(([k, label]) => {
+    h += `<label><input type="radio" name="labelKind" data-kind="${k}" ${kind === k ? 'checked' : ''}> ${label}</label>`;
+  });
+  h += '<div class="names-divider"></div><div class="names-head">Where</div>';
   if (S.subject === 'colonies') {
     h += nameRow('all', 'All 13 colonies', null, nameSel.colonies.has('all'));
-    h += '<div class="names-divider"></div>';
     COLONY_GROUPS.forEach((g, i) => { h += nameRow(i, g.name, g.hue, nameSel.colonies.has(i)); });
   } else {
     h += nameRow('all', 'All 50 states', null, nameSel.states.has('all'));
-    h += '<div class="names-divider"></div>';
     BLOCKS.forEach((b, i) => { h += nameRow(i, b.name, b.hue, nameSel.states.has(i)); });
   }
   menu.innerHTML = h;
@@ -1765,6 +1866,13 @@ $('#namesBtn').addEventListener('click', () => {
   $('#namesBtn').setAttribute('aria-expanded', String(!menu.hidden));
 });
 $('#namesMenu').addEventListener('change', e => {
+  const kr = e.target.closest('input[data-kind]');
+  if (kr) {
+    nameSel.kind = kr.dataset.kind;
+    saveNameSel();
+    renderNameLayer();
+    return;
+  }
   const cb = e.target.closest('input[data-key]');
   if (!cb) return;
   const key = cb.dataset.key === 'all' ? 'all' : Number(cb.dataset.key);
@@ -1788,6 +1896,7 @@ function spellPool() {
   }
   if (!sel.size || sel.has('all')) return Object.keys(NAMES);
   const out = [...sel].flatMap(i => (BLOCKS[i] ? BLOCKS[i].codes : []));
+  if (sel.has(1)) out.push('dc');
   return out.length ? out : Object.keys(NAMES);
 }
 function setSpellTarget(code) {
@@ -1810,8 +1919,11 @@ function spellTap(code) {
   const inp = $('#spellInput');
   if (inp) { inp.value = ''; inp.focus(); }
 }
-function normSpell(s) { return s.toLowerCase().replace(/\s+/g, ' ').trim(); }
+function normSpell(s) { return s.toLowerCase().replace(/[.,'’]/g, '').replace(/\s+/g, ' ').trim(); }
 function spellDiffHtml(typed, correct) {
+  if (normSpell(correct).length !== correct.length) {
+    return `<span class="spell-diff"><span class="bad">${esc(correct)}</span></span>`;
+  }
   const t = normSpell(typed);
   let h = '';
   for (let i = 0; i < correct.length; i++) {
@@ -1961,12 +2073,11 @@ function flagTap(code) {
 
 function capsSetChoices(r) {
   const target = r.seq[r.i];
-  const others = shuffle(Object.keys(CAPITALS).filter(c => c !== target)).slice(0, 3);
-  r.choices = shuffle([target, ...others].map(c => CAPITALS[c]));
+  r.choices = shuffle([CAPITALS[target], ...DECOYS[target]]);
   r.answered = false;
 }
 function startCapsRound() {
-  S.caps.round = { seq: shuffle(spellPool()), i: 0, tries: 0, right: 0, choices: [], answered: false };
+  S.caps.round = { seq: shuffle(spellPool().filter(c => CAPITALS[c])), i: 0, tries: 0, right: 0, choices: [], answered: false };
   S.caps.done = null;
   setMsg('', '');
   paintBase();
@@ -2306,7 +2417,7 @@ function renderCtx() {
     if (!r) h += `<button class="btn" id="capsRoundBtn">${cp.done ? 'Another round 🏛️' : `Round of ${spellPool().length} 🏛️`}</button>`;
   } else {
     h += `<div class="ctx-title">Explore the map 🧭</div>`;
-    h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. The Names button on the map can show whole regions. No score, no clock.</div>`;
+    h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name, code, capital, and flag. The Labels button can put names, codes, capitals, or flags right on the map. No score, no clock.</div>`;
   }
   body.innerHTML = h;
 
@@ -2551,7 +2662,7 @@ map.addEventListener('pointermove', e => {
   );
   if (revealable) {
     tip.innerHTML = NAMES[code] + (code === 'me' && S.subject === 'colonies' ? '<small>part of Massachusetts until 1820</small>' : '')
-      + (S.mode === 'explore' && S.subject === 'states' ? `<small>${code.toUpperCase()} &middot; Capital: ${esc(CAPITALS[code])}</small><img class="tip-flag" src="flags/us-${code}.png" alt="">` : '');
+      + (S.mode === 'explore' && S.subject === 'states' ? `<small>${code.toUpperCase()} &middot; ${code === 'dc' ? 'The nation’s capital 🇺🇸' : 'Capital: ' + esc(CAPITALS[code])}</small><img class="tip-flag" src="flags/us-${code}.png" alt="">` : '');
     tip.style.left = e.clientX + 'px';
     tip.style.top = e.clientY + 'px';
     tip.classList.add('show');
