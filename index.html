@@ -428,6 +428,25 @@
     border-radius: 4px;
     margin-top: 5px;
   }
+  .choice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .choice-grid button {
+    border: 1.5px solid var(--line);
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 11px 8px;
+    font-weight: 700;
+    font-size: 13.5px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+  }
+  .choice-grid button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .choice-grid button.right { border-color: var(--good); background: var(--good-soft); color: var(--good); }
+  .choice-grid button.wrong { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
+  .choice-grid button:disabled { cursor: default; }
 
   .state-shape {
     fill: var(--land);
@@ -854,6 +873,7 @@
           <button role="menuitem" data-mode="spell" aria-selected="false">Spell</button>
           <button role="menuitem" data-mode="abbr" aria-selected="false">Letters</button>
           <button role="menuitem" data-mode="flags" aria-selected="false">Flags</button>
+          <button role="menuitem" data-mode="caps" aria-selected="false">Capitals</button>
           <button role="menuitem" data-mode="explore" aria-selected="false">Explore</button>
         </div>
       </div>
@@ -947,6 +967,18 @@ const NAMES = {
   wv:'West Virginia', wi:'Wisconsin', wy:'Wyoming'
 };
 
+const CAPITALS = {
+  al:'Montgomery', ak:'Juneau', az:'Phoenix', ar:'Little Rock', ca:'Sacramento', co:'Denver',
+  ct:'Hartford', de:'Dover', fl:'Tallahassee', ga:'Atlanta', hi:'Honolulu', id:'Boise',
+  il:'Springfield', in:'Indianapolis', ia:'Des Moines', ks:'Topeka', ky:'Frankfort', la:'Baton Rouge',
+  me:'Augusta', md:'Annapolis', ma:'Boston', mi:'Lansing', mn:'Saint Paul', ms:'Jackson',
+  mo:'Jefferson City', mt:'Helena', ne:'Lincoln', nv:'Carson City', nh:'Concord', nj:'Trenton',
+  nm:'Santa Fe', ny:'Albany', nc:'Raleigh', nd:'Bismarck', oh:'Columbus', ok:'Oklahoma City',
+  or:'Salem', pa:'Harrisburg', ri:'Providence', sc:'Columbia', sd:'Pierre', tn:'Nashville',
+  tx:'Austin', ut:'Salt Lake City', vt:'Montpelier', va:'Richmond', wa:'Olympia', wv:'Charleston',
+  wi:'Madison', wy:'Cheyenne'
+};
+
 const BLOCKS = [
   { name:'Northeast',  numeral:'I',   hue:'var(--b1)', codes:['me','nh','vt','ma','ri','ct','ny','nj','pa','de'] },
   { name:'Southeast',  numeral:'II',  hue:'var(--b2)', codes:['md','va','wv','nc','sc','ga','fl','al','ms','tn'] },
@@ -1017,6 +1049,7 @@ const S = {
   spell: { target: null, round: null, done: null, endless: false, lastEndless: null },
   abbr: { style: 'find', round: null, done: null },
   flags: { round: null, done: null },
+  caps: { style: 'choose', round: null, done: null },
   neZoom: false
 };
 
@@ -1926,6 +1959,89 @@ function flagTap(code) {
   }
 }
 
+function capsSetChoices(r) {
+  const target = r.seq[r.i];
+  const others = shuffle(Object.keys(CAPITALS).filter(c => c !== target)).slice(0, 3);
+  r.choices = shuffle([target, ...others].map(c => CAPITALS[c]));
+  r.answered = false;
+}
+function startCapsRound() {
+  S.caps.round = { seq: shuffle(spellPool()), i: 0, tries: 0, right: 0, choices: [], answered: false };
+  S.caps.done = null;
+  setMsg('', '');
+  paintBase();
+  if (S.caps.style === 'choose') {
+    capsSetChoices(S.caps.round);
+    pulseState(S.caps.round.seq[0]);
+  }
+  renderCtx();
+}
+function finishCapsRound() {
+  const r = S.caps.round;
+  pulseState(null);
+  S.caps.round = null;
+  S.caps.done = r;
+  if (r.right === r.seq.length) { confettiBurst(); haptic([40, 60, 40, 60, 90]); }
+  setMsg(gradeLine(r.right, r.seq.length), r.right / r.seq.length >= .8 ? 'good' : '');
+  renderCtx();
+}
+function capsTap(code) {
+  const r = S.caps.round;
+  if (!r || S.caps.style !== 'find') return;
+  const target = r.seq[r.i];
+  if (code === target) {
+    if (r.tries === 0) { r.right++; streakUp(code); confettiPop(code, 12); }
+    haptic(25);
+    setFill(code, hueOf(code, S.subject));
+    flash(code, 'flash-good');
+    setMsg(`${praise()} ${esc(CAPITALS[target])} is the capital of ${esc(NAMES[target])}`, 'good');
+    r.tries = 0;
+    roundAdvance(r, renderCtx, finishCapsRound, 700);
+  } else {
+    r.tries++;
+    streakReset();
+    haptic([30, 50, 30]);
+    flash(code, 'flash-bad');
+    if (r.tries >= 3) {
+      setFill(target, hueOf(target, S.subject));
+      flash(target, 'pulse-hint');
+      setMsg(`${esc(CAPITALS[target])} is in ${esc(NAMES[target])}. It’s glowing now.`, 'bad');
+      r.tries = 0;
+      roundAdvance(r, renderCtx, finishCapsRound, 1800);
+    } else {
+      setMsg(`${gentle()} That’s ${esc(NAMES[code])} (capital: ${esc(CAPITALS[code])}). ${3 - r.tries} ${3 - r.tries === 1 ? 'try' : 'tries'} left.`, 'bad');
+    }
+  }
+}
+function capsChoose(cap) {
+  const r = S.caps.round;
+  if (!r || S.caps.style !== 'choose' || r.answered) return;
+  r.answered = true;
+  const target = r.seq[r.i];
+  const ok = cap === CAPITALS[target];
+  document.querySelectorAll('#capsChoices button').forEach(b => {
+    if (b.dataset.cap === CAPITALS[target]) b.classList.add('right');
+    else if (b.dataset.cap === cap) b.classList.add('wrong');
+    b.disabled = true;
+  });
+  if (ok) {
+    r.right++;
+    streakUp(target); confettiPop(target, 12); haptic(25);
+    setFill(target, hueOf(target, S.subject));
+    flash(target, 'flash-good');
+    setMsg(`${praise()} ${esc(NAMES[target])} → ${esc(CAPITALS[target])}`, 'good');
+  } else {
+    streakReset(); haptic([30, 50, 30]);
+    flash(target, 'flash-bad');
+    setMsg(`${gentle()} ${esc(NAMES[target])}’s capital is ${esc(CAPITALS[target])}.`, 'bad');
+  }
+  roundAdvance(r, () => {
+    capsSetChoices(r);
+    pulseState(r.seq[r.i]);
+    renderCtx();
+  }, finishCapsRound, ok ? 800 : 2200);
+}
+
 let endlessTimer = 0;
 function pickEndless() {
   const pool = spellPool();
@@ -2163,6 +2279,31 @@ function renderCtx() {
     }
     h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
     if (!r) h += `<button class="btn" id="flagRoundBtn">${fl.done ? 'Another round 🚩' : `Round of ${spellPool().length} 🚩`}</button>`;
+  } else if (S.mode === 'caps') {
+    const cp = S.caps, r = cp.round;
+    const scopeSel = spellScopeSel();
+    h += `<div class="ctx-title">Capitals 🏛️</div>`;
+    if (!r) {
+      h += `<div class="quiz-sets" id="spellScope">`;
+      h += `<button data-scope="all" aria-pressed="${scopeSel.has('all')}">${isCol ? 'All 13' : 'All 50'}</button>`;
+      (isCol ? COLONY_GROUPS : BLOCKS).forEach((g, i) => {
+        h += `<button data-scope="${i}" aria-pressed="${scopeSel.has(i)}">${g.name}</button>`;
+      });
+      h += `</div>`;
+      h += `<div class="seg" id="capsStyleSeg"><button data-style="choose" aria-pressed="${cp.style === 'choose'}">Pick the capital</button><button data-style="find" aria-pressed="${cp.style === 'find'}">Find the state</button></div>`;
+    }
+    if (r && cp.style === 'choose') {
+      h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; what’s the capital of the glowing state?</div>`;
+      h += `<div class="choice-grid" id="capsChoices">` + r.choices.map(c =>
+        `<button data-cap="${esc(c)}">${esc(c)}</button>`).join('') + `</div>`;
+    } else if (r) {
+      h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; tap the state this capital belongs to</div>`;
+      h += `<div class="prompt-name">${esc(CAPITALS[r.seq[r.i]])}</div>`;
+    } else {
+      h += `<div class="ctx-sub">Fifty states, fifty capitals. Learn them both directions.</div>`;
+    }
+    h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
+    if (!r) h += `<button class="btn" id="capsRoundBtn">${cp.done ? 'Another round 🏛️' : `Round of ${spellPool().length} 🏛️`}</button>`;
   } else {
     h += `<div class="ctx-title">Explore the map 🧭</div>`;
     h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. The Names button on the map can show whole regions. No score, no clock.</div>`;
@@ -2194,6 +2335,16 @@ function renderCtx() {
     renderCtx();
   });
   const frb = $('#flagRoundBtn'); if (frb) frb.addEventListener('click', startFlagRound);
+  const crb = $('#capsRoundBtn'); if (crb) crb.addEventListener('click', startCapsRound);
+  const csg = $('#capsStyleSeg'); if (csg) csg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.caps.style = b.dataset.style;
+    renderCtx();
+  });
+  const cch = $('#capsChoices'); if (cch) cch.addEventListener('click', e => {
+    const b = e.target.closest('button[data-cap]'); if (!b) return;
+    capsChoose(b.dataset.cap);
+  });
   const sts = $('#spellTimingSeg'); if (sts) sts.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     nameSel.spellTiming = b.dataset.t;
@@ -2236,6 +2387,7 @@ function renderTray() {
       : S.mode === 'spell' ? 'Spell mode: tap a state on the map, then type its name.'
       : S.mode === 'abbr' ? 'Letters mode: start a round and match states to their two-letter codes.'
       : S.mode === 'flags' ? 'Flags mode: start a round and tap the state each flag belongs to.'
+      : S.mode === 'caps' ? 'Capitals mode: start a round and match states to their capitals.'
       : 'Explore mode: just tap around the map.';
     tray.appendChild(d);
     return;
@@ -2376,6 +2528,7 @@ map.addEventListener('click', e => {
   if (S.mode === 'spell') { spellTap(code); return; }
   if (S.mode === 'abbr') { abbrTap(code); return; }
   if (S.mode === 'flags') { flagTap(code); return; }
+  if (S.mode === 'caps') { capsTap(code); return; }
   if (S.mode === 'explore') { exploreTap(code); return; }
   if (S.mode === 'quiz') { if (S.quiz && !S.quiz.done) quizTap(code); return; }
   if (S.mode === 'timed') { if (S.timed && S.timed.running) timedTap(code); return; }
@@ -2398,7 +2551,7 @@ map.addEventListener('pointermove', e => {
   );
   if (revealable) {
     tip.innerHTML = NAMES[code] + (code === 'me' && S.subject === 'colonies' ? '<small>part of Massachusetts until 1820</small>' : '')
-      + (S.mode === 'explore' && S.subject === 'states' ? `<small>${code.toUpperCase()}</small><img class="tip-flag" src="flags/us-${code}.png" alt="">` : '');
+      + (S.mode === 'explore' && S.subject === 'states' ? `<small>${code.toUpperCase()} &middot; Capital: ${esc(CAPITALS[code])}</small><img class="tip-flag" src="flags/us-${code}.png" alt="">` : '');
     tip.style.left = e.clientX + 'px';
     tip.style.top = e.clientY + 'px';
     tip.classList.add('show');
@@ -2471,13 +2624,14 @@ function setMode(mode) {
   S.spell = { target: null, round: null, done: null, endless: false, lastEndless: null };
   S.abbr = { style: S.abbr ? S.abbr.style : 'find', round: null, done: null };
   S.flags = { round: null, done: null };
+  S.caps = { style: S.caps ? S.caps.style : 'choose', round: null, done: null };
   clearSpellTarget();
   clearTimeout(endlessTimer);
   clearTimeout(advanceTimer);
   streakReset();
   setMsg('', '');
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
-  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', spell: 'Spell', abbr: 'Letters', flags: 'Flags', explore: 'Explore' }[mode] || mode;
+  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', spell: 'Spell', abbr: 'Letters', flags: 'Flags', caps: 'Capitals', explore: 'Explore' }[mode] || mode;
   $('#modeMenu').hidden = true;
   $('#modeBtn').setAttribute('aria-expanded', 'false');
   if (mode === 'journey') startRound();
