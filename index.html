@@ -349,6 +349,43 @@
   .callout-chip.drop-hover rect { stroke: var(--accent); stroke-width: 2.5; fill: var(--accent-soft); }
   .callout-chip.revealed text { opacity: 1; }
 
+  .state-shape.spell-target {
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    animation: spellPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes spellPulse { 0%, 100% { fill: var(--land); } 50% { fill: var(--accent-soft); } }
+  .callout-chip.spell-target rect {
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    animation: chipHint 1.6s ease-in-out infinite;
+  }
+  .spell-row { display: flex; gap: 8px; }
+  .spell-row input {
+    flex: 1;
+    min-width: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 700;
+    padding: 10px 12px;
+  }
+  .spell-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .spell-diff { font-weight: 800; letter-spacing: .05em; }
+  .spell-diff .ok { color: var(--good); }
+  .spell-diff .bad { color: var(--bad); text-decoration: underline; }
+  .spell-misses { display: flex; flex-direction: column; gap: 6px; }
+  .spell-miss {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 7px 11px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .spell-miss .typed { color: var(--ink-soft); text-decoration: line-through; margin-right: 8px; }
+
   .state-shape {
     fill: var(--land);
     stroke: var(--land-line);
@@ -771,6 +808,7 @@
           <button role="menuitem" data-mode="journey" aria-selected="true">Journey</button>
           <button role="menuitem" data-mode="quiz" aria-selected="false">Quiz</button>
           <button role="menuitem" data-mode="timed" aria-selected="false">Timed</button>
+          <button role="menuitem" data-mode="spell" aria-selected="false">Spell</button>
           <button role="menuitem" data-mode="explore" aria-selected="false">Explore</button>
         </div>
       </div>
@@ -930,6 +968,7 @@ const S = {
   timed: null,
   quizSet: 'unlocked',
   timedStyle: 'tap',
+  spell: { target: null, round: null, done: null },
   neZoom: false
 };
 
@@ -1560,12 +1599,25 @@ const VIEWKEY = 'state-scout-view-v1';
 function loadNameSel() {
   try {
     const p = JSON.parse(localStorage.getItem(VIEWKEY) || '{}');
-    return { states: new Set(p.states || []), colonies: new Set(p.colonies || []) };
-  } catch { return { states: new Set(), colonies: new Set() }; }
+    return {
+      states: new Set(p.states || []), colonies: new Set(p.colonies || []),
+      spellStates: new Set(p.spellStates && p.spellStates.length ? p.spellStates : ['all']),
+      spellColonies: new Set(p.spellColonies && p.spellColonies.length ? p.spellColonies : ['all']),
+      spellTiming: p.spellTiming === 'end' ? 'end' : 'now'
+    };
+  } catch {
+    return { states: new Set(), colonies: new Set(), spellStates: new Set(['all']), spellColonies: new Set(['all']), spellTiming: 'now' };
+  }
 }
 const nameSel = loadNameSel();
 function saveNameSel() {
-  try { localStorage.setItem(VIEWKEY, JSON.stringify({ states: [...nameSel.states], colonies: [...nameSel.colonies] })); } catch {}
+  try {
+    localStorage.setItem(VIEWKEY, JSON.stringify({
+      states: [...nameSel.states], colonies: [...nameSel.colonies],
+      spellStates: [...nameSel.spellStates], spellColonies: [...nameSel.spellColonies],
+      spellTiming: nameSel.spellTiming
+    }));
+  } catch {}
 }
 function namedCodes() {
   if (S.subject === 'colonies') {
@@ -1632,6 +1684,119 @@ $('#namesMenu').addEventListener('change', e => {
   renderNameLayer();
 });
 
+/* ================= spell mode ================= */
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function spellScopeSel() { return S.subject === 'colonies' ? nameSel.spellColonies : nameSel.spellStates; }
+function spellPool() {
+  const sel = spellScopeSel();
+  if (S.subject === 'colonies') {
+    if (!sel.size || sel.has('all')) return COLONIES.slice();
+    const out = [];
+    sel.forEach(i => { const g = COLONY_GROUPS[i]; if (g) for (let k = g.from; k <= g.to; k++) out.push(COLONIES[k]); });
+    return out.length ? out : COLONIES.slice();
+  }
+  if (!sel.size || sel.has('all')) return Object.keys(NAMES);
+  const out = [...sel].flatMap(i => (BLOCKS[i] ? BLOCKS[i].codes : []));
+  return out.length ? out : Object.keys(NAMES);
+}
+function setSpellTarget(code) {
+  clearSpellTarget();
+  S.spell.target = code;
+  if (code) {
+    shapes[code].classList.add('spell-target');
+    if (chips[code]) chips[code].classList.add('spell-target');
+  }
+}
+function clearSpellTarget() {
+  document.querySelectorAll('.spell-target').forEach(el => el.classList.remove('spell-target'));
+}
+function spellTap(code) {
+  if (S.spell.round) return; // during a round the map picks the state
+  setMsg('', '');
+  setSpellTarget(code);
+  haptic(10);
+  renderCtx();
+  const inp = $('#spellInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+function normSpell(s) { return s.toLowerCase().replace(/\s+/g, ' ').trim(); }
+function spellDiffHtml(typed, correct) {
+  const t = normSpell(typed);
+  let h = '';
+  for (let i = 0; i < correct.length; i++) {
+    const ok = i < t.length && t[i] === correct[i].toLowerCase();
+    h += `<span class="${ok ? 'ok' : 'bad'}">${correct[i] === ' ' ? '&nbsp;' : esc(correct[i])}</span>`;
+  }
+  if (t.length > correct.length) h += `<span class="bad">&hellip;</span>`;
+  return `<span class="spell-diff">${h}</span>`;
+}
+function startSpellRound() {
+  S.spell.round = { seq: shuffle(spellPool()), i: 0, results: [] };
+  S.spell.done = null;
+  setMsg('', '');
+  paintBase();
+  setSpellTarget(S.spell.round.seq[0]);
+  renderCtx();
+  const inp = $('#spellInput');
+  if (inp) inp.focus();
+}
+function finishSpellRound() {
+  const r = S.spell.round;
+  clearSpellTarget();
+  S.spell.target = null;
+  S.spell.round = null;
+  S.spell.done = r;
+  const right = r.results.filter(x => x.ok).length;
+  const pct = Math.round(100 * right / r.results.length);
+  if (right === r.results.length) { confettiBurst(); haptic([40, 60, 40, 60, 90]); }
+  setMsg(`Spelled ${right} of ${r.results.length} right (${pct}%).${right === r.results.length ? ' Perfect ★' : ''}`, pct >= 80 ? 'good' : '');
+  renderCtx();
+}
+function spellSubmit() {
+  const inp = $('#spellInput');
+  if (!inp || !S.spell.target) return;
+  const typed = inp.value;
+  if (!normSpell(typed)) { inp.focus(); return; }
+  const code = S.spell.target;
+  const correct = NAMES[code];
+  const ok = normSpell(typed) === normSpell(correct);
+  const r = S.spell.round;
+  if (r) {
+    r.results.push({ code, typed, ok });
+    if (nameSel.spellTiming !== 'end') {
+      if (ok) { haptic(25); flash(code, 'flash-good'); setMsg(`Correct. ${esc(correct)} ★`, 'good'); }
+      else { haptic([30, 50, 30]); flash(code, 'flash-bad'); setMsg(`It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad'); }
+    } else {
+      haptic(12);
+      setMsg(`Answer ${r.results.length} of ${r.seq.length} locked in.`, '');
+    }
+    r.i++;
+    if (r.i >= r.seq.length) { finishSpellRound(); return; }
+    setSpellTarget(r.seq[r.i]);
+    renderCtx();
+    const ni = $('#spellInput');
+    if (ni) { ni.value = ''; ni.focus(); }
+  } else {
+    if (ok) {
+      haptic(25);
+      setFill(code, hueOf(code, S.subject));
+      addLabel(code);
+      flash(code, 'flash-good');
+      setMsg(`Correct. ${esc(correct)} ★`, 'good');
+      clearSpellTarget();
+      S.spell.target = null;
+    } else {
+      haptic([30, 50, 30]);
+      flash(code, 'flash-bad');
+      setMsg(`Not quite. It’s spelled ${spellDiffHtml(typed, correct)}`, 'bad');
+    }
+    renderCtx();
+    const ni = $('#spellInput');
+    if (ni) { ni.value = ''; if (!ok) ni.focus(); }
+  }
+}
+
 /* ================= context panel rendering ================= */
 
 let msg = { text: '', cls: '' };
@@ -1690,6 +1855,34 @@ function renderCtx() {
     h += `<div class="ctx-sub">${setName}${best ? ` &middot; best ${fmtTime(best)}` : ''} &middot; wrong picks +2s</div>`;
     h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
     if (!t || !t.running) h += `<button class="btn" id="timedBtn">${t ? 'Go again' : 'Start'}</button>`;
+  } else if (S.mode === 'spell') {
+    const sp = S.spell, r = sp.round;
+    const scopeSel = spellScopeSel();
+    h += `<div class="ctx-title">Spell it</div>`;
+    if (!r) {
+      h += `<div class="quiz-sets" id="spellScope">`;
+      h += `<button data-scope="all" aria-pressed="${scopeSel.has('all')}">${isCol ? 'All 13' : 'All 50'}</button>`;
+      (isCol ? COLONY_GROUPS : BLOCKS).forEach((g, i) => {
+        h += `<button data-scope="${i}" aria-pressed="${scopeSel.has(i)}">${g.name}</button>`;
+      });
+      h += `</div>`;
+      h += `<div class="seg" id="spellTimingSeg"><button data-t="now" aria-pressed="${nameSel.spellTiming !== 'end'}">Check right away</button><button data-t="end" aria-pressed="${nameSel.spellTiming === 'end'}">Results at the end</button></div>`;
+    }
+    if (r) h += `<div class="ctx-sub">${r.i + 1} of ${r.seq.length} &middot; spell the glowing ${isCol ? 'colony' : 'state'}</div>`;
+    else if (sp.target) h += `<div class="ctx-sub">Spell the glowing ${isCol ? 'colony' : 'state'}</div>`;
+    else h += `<div class="ctx-sub">Tap any ${isCol ? 'colony' : 'state'} and type its name, or run a round over your picks above.</div>`;
+    if (r || sp.target) {
+      h += `<div class="spell-row"><input id="spellInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="Type the name"><button class="btn" id="spellCheck">Check</button></div>`;
+    }
+    h += `<div class="ctx-msg${msg.cls ? ' ' + msg.cls : ''}" id="ctxMsg">${msg.text}</div>`;
+    if (!r && sp.done) {
+      const misses = sp.done.results.filter(x => !x.ok);
+      if (misses.length) {
+        h += `<div class="spell-misses">` + misses.map(m =>
+          `<div class="spell-miss"><span class="typed">${esc(m.typed) || '&mdash;'}</span>${spellDiffHtml(m.typed, NAMES[m.code])}</div>`).join('') + `</div>`;
+      }
+    }
+    if (!r) h += `<button class="btn" id="spellRoundBtn">${sp.done ? 'Another round' : 'Start a round'}</button>`;
   } else {
     h += `<div class="ctx-title">Explore the map</div>`;
     h += `<div class="ctx-msg" id="ctxMsg">Tap any ${isCol ? 'colony' : 'state'} to see its name. The Names button on the map can show whole regions. No score, no clock.</div>`;
@@ -1706,6 +1899,28 @@ function renderCtx() {
   const seg = $('#styleSeg'); if (seg) seg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     S.timedStyle = b.dataset.style; S.timed = null; clearInterval(timerInt); setMsg('', ''); paintBase(); renderCtx(); renderTray();
+  });
+  const sc = $('#spellCheck'); if (sc) sc.addEventListener('click', spellSubmit);
+  const si = $('#spellInput'); if (si) si.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); spellSubmit(); } });
+  const srb = $('#spellRoundBtn'); if (srb) srb.addEventListener('click', startSpellRound);
+  const sts = $('#spellTimingSeg'); if (sts) sts.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    nameSel.spellTiming = b.dataset.t;
+    saveNameSel();
+    renderCtx();
+  });
+  const ssc = $('#spellScope'); if (ssc) ssc.addEventListener('click', e => {
+    const b = e.target.closest('button[data-scope]'); if (!b) return;
+    const sel = spellScopeSel();
+    if (b.dataset.scope === 'all') { sel.clear(); sel.add('all'); }
+    else {
+      const i = Number(b.dataset.scope);
+      sel.delete('all');
+      if (sel.has(i)) sel.delete(i); else sel.add(i);
+      if (!sel.size) sel.add('all');
+    }
+    saveNameSel();
+    renderCtx();
   });
 }
 
@@ -1727,6 +1942,7 @@ function renderTray() {
     d.textContent = S.mode === 'journey' ? 'Start a round to deal the names.'
       : S.mode === 'timed' ? (S.timedStyle === 'drag' ? 'Start the clock to deal the names.' : 'Tap mode: no tray needed.')
       : S.mode === 'quiz' ? 'Quiz mode: the prompt is on the left.'
+      : S.mode === 'spell' ? 'Spell mode: tap a state on the map, then type its name.'
       : 'Explore mode: just tap around the map.';
     tray.appendChild(d);
     return;
@@ -1832,6 +2048,7 @@ map.addEventListener('click', e => {
   const host = e.target.closest('[data-code]');
   if (!host || host.classList.contains('muted')) return;
   const code = host.dataset.code;
+  if (S.mode === 'spell') { spellTap(code); return; }
   if (S.mode === 'explore') { exploreTap(code); return; }
   if (S.mode === 'quiz') { if (S.quiz && !S.quiz.done) quizTap(code); return; }
   if (S.mode === 'timed') { if (S.timed && S.timed.running) timedTap(code); return; }
@@ -1908,9 +2125,11 @@ function confettiBurst() {
 function setMode(mode) {
   S.mode = mode;
   S.quiz = null; S.timed = null; clearInterval(timerInt);
+  S.spell = { target: null, round: null, done: null };
+  clearSpellTarget();
   setMsg('', '');
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
-  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', explore: 'Explore' }[mode] || mode;
+  $('#modeBtnLabel').textContent = { journey: 'Journey', quiz: 'Quiz', timed: 'Timed', spell: 'Spell', explore: 'Explore' }[mode] || mode;
   $('#modeMenu').hidden = true;
   $('#modeBtn').setAttribute('aria-expanded', 'false');
   if (mode === 'journey') startRound();
